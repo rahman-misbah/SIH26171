@@ -1,0 +1,13 @@
+{
+  "manifest_version": 3,
+  "name": "Browser Agent Prototype",
+  "version": "0.1",
+  "description": "Minimal DOM capture prototype",
+
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["content.js"]
+    }
+  ]
+}
