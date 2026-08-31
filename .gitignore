@@ -1,0 +1,107 @@
+# ==============================================================================
+# PYTHON CORE & BYTECODE
+# ==============================================================================
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# C extensions
+*.so
+
+# ==============================================================================
+# VIRTUAL ENVIRONMENTS & DEPENDENCIES
+# ==============================================================================
+# Standard python virtual environments
+.venv/
+venv/
+ENV/
+env/
+pythonenv/
+
+# Pipenv / Poetry / Conda artifacts
+.venv
+Pipfile.lock
+poetry.lock
+.conda/
+
+# ==============================================================================
+# DISTRIBUTION & PACKAGING
+# ==============================================================================
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Inline installers / PyInstaller
+*.manifest
+*.spec
+
+# ==============================================================================
+# TESTING & COVERAGE / CODE QUALITY
+# ==============================================================================
+# Inline testing folders
+.toml
+.pytest_cache/
+.tox/
+.nox/
+.coverage
+.coverage.*
+htmlcov/
+nosetests.xml
+coverage.xml
+*.cover
+*.log
+.hypothesis/
+.ruff_cache/
+.mypy_cache/
+
+# ==============================================================================
+# JUPYTER NOTEBOOKS
+# ==============================================================================
+.ipynb_checkpoints
+*/.ipynb_checkpoints/*
+
+# ==============================================================================
+# SENSITIVE DATA & CONFIGURATIONS
+# ==============================================================================
+# Environment secrets (Crucial to block API keys and tokens)
+.env
+.env.*
+.secrets
+secrets.*
+
+# Databases
+*.db
+*.sqlite3
+
+# ==============================================================================
+# IDEs & CODE EDITORS (VS Code, PyCharm, Vim)
+# ==============================================================================
+# Visual Studio Code
+.vscode/
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+
+# JetBrains (PyCharm, IntelliJ)
+.idea/
+
+# Local/System-specific artifacts
+.DS_Store
+Thumbs.db
+*.swp
+*~
