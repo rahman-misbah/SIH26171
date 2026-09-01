@@ -80,6 +80,7 @@ coverage.xml
 # Environment secrets (Crucial to block API keys and tokens)
 .env
 .env.*
+!.env.example
 .secrets
 secrets.*
 
