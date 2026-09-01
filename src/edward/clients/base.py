@@ -2,8 +2,8 @@
 
 from abc import ABC, abstractmethod
 
-from request import ModelRequest
-from response import ModelResponse
+from ..models import ModelRequest
+from ..models import ModelResponse
 
 class ModelClient(ABC):
     """Defines the interface for a model provider client"""
