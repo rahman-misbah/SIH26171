@@ -1,7 +1,7 @@
 """Represents a provider independent request sent to a model"""
 from dataclasses import dataclass
 
-from content import TextContent, ImageContent
+from .content import TextContent, ImageContent
 
 type ModelContent = TextContent | ImageContent
 
