@@ -5,18 +5,18 @@ from pathlib import Path
 from dotenv import load_dotenv
 
 load_dotenv()
-BASE_PATH = Path.cwd().parent.parent
+BASE_PATH = Path(__file__).resolve().parent
 
 # Load settings
 # API Key
 API_KEY = os.getenv("API_KEY")
 
 # System prompt
-system_prompt_file = BASE_PATH / "system_prompt.txt"
-if not system_prompt_file.is_file():
+_system_prompt_file = BASE_PATH / "system_prompt.txt"
+if not _system_prompt_file.is_file():
     raise FileNotFoundError("system_prompt.txt doesn't exist")
 
-with open("system_prompt_file", "r") as file:
+with open(_system_prompt_file, "r") as file:
     SYSTEM_PROMPT = file.read()
 
 # Initialize client
