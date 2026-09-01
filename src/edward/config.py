@@ -24,5 +24,5 @@ with open("system_prompt_file", "r") as file:
 CLIENT = None
 
 # Verify settings
-if not api_key:
+if not API_KEY:
     raise ValueError("No API key found!")
