@@ -9,7 +9,7 @@ BASE_PATH = Path.cwd().parent.parent
 
 # Load settings
 # API Key
-api_key = os.getenv("API_KEY")
+API_KEY = os.getenv("API_KEY")
 
 # System prompt
 system_prompt_file = BASE_PATH / "system_prompt.txt"
