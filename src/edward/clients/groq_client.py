@@ -10,7 +10,15 @@ class GroqClient(ModelClient):
     def __init__(self):
         self._client = Groq(api_key=API_KEY)
 
-    def _process_model_request(self, request:ModelRequest):
+    def _process_model_request(self, request:ModelRequest) -> list[dict[str, str]]:
+        """Processes a ModelRequest object and converts into a Groq readable format
+        
+        Args:
+            request(ModelRequest): The object to be converted to Groq readable format
+        
+        Returns:
+            list[dict[str, str]]: The processed list containing dictionaries for each individual object
+        """
         processed_content = list()
 
         for content in request.content:
@@ -42,31 +50,38 @@ class GroqClient(ModelClient):
 
         return processed_content
 
-    def generate(self, request: ModelRequest) -> ModelResponse:
-        # Prompt intended for the model
-        prompt = [
-            {
-                "role": "system",
-                "content": SYSTEM_PROMPT
-            },
-            {
-                "role": "user",
-                "content": self._process_model_request(request)
-            }
-        ]
+    def _extract_result(self, response: str) -> str:
+        _, separator, result = response.partition("</think>")
 
-        return prompt
+        if not separator:
+            return response.strip()
+        return result.strip()
+
+    def generate(self, request: ModelRequest) -> ModelResponse:
+        response = self._client.chat.completions.create(
+            model = "qwen/qwen3.6-27b",
+            messages = [
+                {
+                    "role": "system",
+                    "content": SYSTEM_PROMPT
+                },
+                {
+                    "role": "user",
+                    "content": self._process_model_request(request)
+                }
+            ],
+            n=1
+        )
+
+        response = response.choices[0].message.content
+        return self._extract_result(response)
 
 if __name__ == "__main__":
-    t1 = TextContent("Hello, bois")
-    t2 = TextContent("Howdy!")
-    i1 = ImageContent("img_01", b"Howdy_image", "image/png")
+    t1 = TextContent("This is a test prompt. Reply with a smiley emoticon if you can read the see my message.")
 
     req = ModelRequest((
         t1,
-        t2,
-        i1
     ))
 
     client = GroqClient()
-    print(client.generate(req)[1])
+    print(client.generate(req))
