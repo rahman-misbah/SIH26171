@@ -70,18 +70,10 @@ class GroqClient(ModelClient):
                     "content": self._process_model_request(request)
                 }
             ],
+            max_tokens = 800,
             n=1
         )
 
-        response = response.choices[0].message.content
-        return self._extract_result(response)
-
-if __name__ == "__main__":
-    t1 = TextContent("This is a test prompt. Reply with a smiley emoticon if you can read the see my message.")
-
-    req = ModelRequest((
-        t1,
-    ))
-
-    client = GroqClient()
-    print(client.generate(req))
+        raw_response = response.choices[0].message.content
+        processed_response = self._extract_result(raw_response)
+        return ModelResponse(processed_response)
