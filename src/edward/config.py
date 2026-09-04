@@ -26,3 +26,14 @@ CLIENT = None
 # Verify settings
 if not API_KEY:
     raise ValueError("No API key found!")
+
+# Lazy initialization of client
+
+_CLIENT_INSTANCE = None
+
+def get_client():
+    global _CLIENT_INSTANCE
+    if _CLIENT_INSTANCE is None:
+        from edward.clients.groq_client import GroqClient
+        _CLIENT_INSTANCE = GroqClient
+    return _CLIENT_INSTANCE

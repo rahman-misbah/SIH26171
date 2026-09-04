@@ -4,4 +4,4 @@ from dataclasses import dataclass
 
 @dataclass(frozen=True)
 class ModelResponse:
-    response: str
+    text: str
