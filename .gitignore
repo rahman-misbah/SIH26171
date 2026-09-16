@@ -1,0 +1,11 @@
+node_modules
+.output
+.wxt
+.wxt-plugins
+coverage
+playwright-report
+test-results
+public/models
+*.local
+.env
+.env.*

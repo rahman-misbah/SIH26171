@@ -53,3 +53,9 @@ Browser extension that acts as a privacy firewall for browser agents: it extract
 
 ## Browser quirks found
 <!-- Append here AND to SPEC §4.3 whenever one is discovered -->
+
+- WXT's default `manifestVersion` is 3 for Chrome but **2 for Firefox**. SPEC §4.1 assumes MV3 everywhere (Firefox as an MV3 event page), so `wxt.config.ts` sets `manifestVersion: 3` explicitly.
+- WXT never declares both `background.scripts` and `background.service_worker` in one manifest. Instead it builds one manifest per target and picks the right field there: Firefox+MV3 → `background.scripts` (event page), Chrome/Edge+MV3 → `background.service_worker` — both generated from the same `defineBackground()` source file. This satisfies SPEC's "one source, correct type per browser" intent by a different mechanism than the literal wording ("declares both fields") suggests.
+- Firefox has no `offscreen` permission/API. Leaving `"offscreen"` in `manifest.permissions` for a Firefox build produces a harmless but avoidable `web-ext lint` warning (`MANIFEST_PERMISSIONS: Invalid permissions "offscreen"`). `wxt.config.ts` uses the `manifest: ({ browser }) => ...` function form to omit it on Firefox.
+- Firefox MV3 requires `browser_specific_settings.gecko.id` for AMO submission (`web-ext lint` error `ADDON_ID_REQUIRED`) and, since 2025-11-03, `browser_specific_settings.gecko.data_collection_permissions` for new submissions (`MISSING_DATA_COLLECTION_PERMISSIONS`). Neither is required for local temporary loading (`npm run dev:firefox`, `about:debugging`) — both will be needed before any Firefox packaging/AMO milestone (§17 packaging).
+- Playwright's `chromium.launchPersistentContext` needs `headless: false` to reliably observe an MV3 extension's service worker registering (`context.serviceWorkers()` / `waitForEvent('serviceworker')`); confirmed with the Chromium build Playwright 1.63 bundles. `tests/e2e/fixtures.ts` always launches headed for this reason.

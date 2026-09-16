@@ -12,7 +12,7 @@ Status values: `todo` · `in progress` · `done` · `cut`
 
 ---
 
-## M1 — Scaffold · `todo`
+## M1 — Scaffold · `in progress`
 **Spec:** §4, §17, §20 · **Estimate:** ½ day
 
 Deliverables:
