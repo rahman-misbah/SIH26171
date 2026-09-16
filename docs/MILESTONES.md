@@ -12,7 +12,7 @@ Status values: `todo` · `in progress` · `done` · `cut`
 
 ---
 
-## M1 — Scaffold · `in progress`
+## M1 — Scaffold · `done`
 **Spec:** §4, §17, §20 · **Estimate:** ½ day
 
 Deliverables:
@@ -25,9 +25,9 @@ Deliverables:
 - npm scripts matching CLAUDE.md (update CLAUDE.md if they differ).
 
 Done when:
-- [ ] `npm run dev` loads in Chrome; `npm run dev:firefox` loads in Firefox
-- [ ] `npm run check` passes
-- [ ] A deliberate boundary violation (e.g. `browser` used in `src/dom/`) fails lint
+- [x] `npm run dev` loads in Chrome; `npm run dev:firefox` loads in Firefox
+- [x] `npm run check` passes
+- [x] A deliberate boundary violation (e.g. `browser` used in `src/dom/`) fails lint
 
 ## M2 — Contracts only · `todo`
 **Spec:** §4.2, §5, §7.5, §7.6, §9.2–9.3, §10, §11.1, §12.1–12.2, §13.1 · **Estimate:** ½ day
@@ -177,3 +177,10 @@ Done when:
 ## Log
 
 <!-- /milestone-done appends entries here: date, milestone, summary, measurements, deviations, notes for next milestone -->
+
+### 2026-09-16 — M1 Scaffold
+- Summary: WXT + TypeScript project targeting Chrome and Firefox, with background/content/offscreen/popup/settings entrypoints as empty stubs; manifest built per §4 (CSP with `wasm-unsafe-eval`, `host_permissions`/`optional_host_permissions`, per-browser background field, `offscreen` permission Chromium-only); strict `tsconfig` + `noUncheckedIndexedAccess`; ESLint boundary rules for extension APIs and model-lib/vendor-SDK imports; Vitest and Playwright configured and passing; full §17 folder layout with `index.ts` stubs.
+- Measurements: Chrome prod build 6.28 kB, Firefox prod build 6.26 kB; e2e scaffold test (extension loads, service worker registers) passes headed in ~1.4–1.9s.
+- Deviations from SPEC: (1) WXT's default `manifestVersion` is 3 for Chrome but 2 for Firefox — forced to 3 explicitly (SPEC §4.3 item 10). (2) The manifest does not literally declare both `background.scripts` and `background.service_worker` in one file, as §4 originally phrased it — WXT builds one manifest per target and picks the correct field from a single `defineBackground()` source, same net effect via a different mechanism (SPEC §4.3 item 11). (3) `offscreen` permission is included only in the Chromium manifest, omitted on Firefox, which has no such API (SPEC §4.3 item 12). All three are now documented in SPEC §4.3 and CLAUDE.md's "Browser quirks found".
+- Noticed (out of scope): `web-ext` (required by WXT's peer deps for Firefox dev/build) pulls in `image-size` via `addons-linter`, which has 4 known high-severity DoS advisories (ICNS/JXL/HEIF infinite-loop parsers). Dev-tooling only, never shipped in the built extension; no non-breaking fix exists upstream yet (`npm audit fix --force` would downgrade `web-ext` below WXT's required `>=9.2.0`). Firefox AMO packaging will eventually need `browser_specific_settings.gecko.id` and `gecko.data_collection_permissions` (SPEC §4.3 item 13) — not needed before a packaging milestone.
+- Notes for next milestone: M2 is contracts-only (types/interfaces/type guards, no implementations) — `src/platform/types.ts` (Platform, Transport) + `messages.ts`, `src/backend/types.ts`, `src/backend/llm/types.ts`, `src/agent/schema.ts` (+ type guard + tests), `src/logging/schema.ts`, `src/dom/types.ts`, `src/sanitize/types.ts`, `src/hw/types.ts`, `src/models/capabilities.ts` + `provider.ts`. Each folder's current empty `index.ts` stub should be reconsidered once its types.ts lands (either re-export from it or drop the placeholder). Two CLAUDE.md ESLint boundary rules are still deferred with nothing to enforce yet — orchestrator/assembler depending only on `AgentBackend`/`SanitizedObservation`, and consumers using `getModel()`/`getBackend()` — revisit once the registries/orchestrator exist (M3/M6).
