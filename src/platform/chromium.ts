@@ -1,0 +1,250 @@
+// §4.2/§4.3: the Chromium `Platform` implementation. This file (and
+// gecko.ts/webkit.ts) is the only place allowed to import `browser`/`chrome`
+// (CLAUDE.md boundaries) — everything else depends on `Platform`/`Transport`.
+//
+// §4.3.1: the offscreen document (the compute host) cannot call `tabs` APIs,
+// so both directions of tab-bound messaging are relayed through the
+// background service worker:
+//   - content script -> background -> offscreen  (requests reaching the host)
+//   - offscreen -> background -> tab              (pushes leaving the host)
+// The relay and the host-side handler share one message shape (`EdwardMessage`)
+// and use `sender.tab` (present only for messages that genuinely came from a
+// tab) to tell an original request from an already-relayed one apart, so a
+// broadcast a listener sent itself is never mistaken for new inbound work.
+
+import { browser } from 'wxt/browser';
+import type { MessageMap } from './messages';
+import type { KeyValueStore, Platform, Port, TabRef } from './types';
+
+type EdwardMessage =
+  | { __edward: 'request'; type: string; payload: unknown }
+  | { __edward: 'to-tab'; tabId: number; msg: unknown }
+  | { __edward: 'get-active-tab' };
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
+}
+
+function isEdwardMessage(value: unknown): value is EdwardMessage {
+  return isRecord(value) && typeof value.__edward === 'string';
+}
+
+// §4.3.7: Chromium extension messaging is JSON-serialized (no ArrayBuffer),
+// while Firefox/Safari use structured clone. Consumers always send/receive
+// ArrayBuffer, so this walks the payload and swaps ArrayBuffer <-> base64
+// around the wire on Chromium only.
+const ARRAY_BUFFER_MARKER = '__edwardArrayBuffer';
+
+function arrayBufferToBase64(buffer: ArrayBuffer): string {
+  const bytes = new Uint8Array(buffer);
+  let binary = '';
+  const chunkSize = 0x8000; // avoid a call-stack blowout from String.fromCharCode(...bytes) on large buffers
+  for (let i = 0; i < bytes.length; i += chunkSize) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + chunkSize));
+  }
+  return btoa(binary);
+}
+
+function base64ToArrayBuffer(base64: string): ArrayBuffer {
+  const binary = atob(base64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+  return bytes.buffer;
+}
+
+function encodeBinary(value: unknown): unknown {
+  if (value instanceof ArrayBuffer) return { [ARRAY_BUFFER_MARKER]: arrayBufferToBase64(value) };
+  if (Array.isArray(value)) return value.map(encodeBinary);
+  if (isRecord(value)) return Object.fromEntries(Object.entries(value).map(([k, v]) => [k, encodeBinary(v)]));
+  return value;
+}
+
+function decodeBinary(value: unknown): unknown {
+  if (isRecord(value) && typeof value[ARRAY_BUFFER_MARKER] === 'string') {
+    return base64ToArrayBuffer(value[ARRAY_BUFFER_MARKER]);
+  }
+  if (Array.isArray(value)) return value.map(decodeBinary);
+  if (isRecord(value)) return Object.fromEntries(Object.entries(value).map(([k, v]) => [k, decodeBinary(v)]));
+  return value;
+}
+
+// Whether this context can call `tabs` APIs directly — true in the
+// background service worker, false in the offscreen document (§4.3.1).
+function canUseTabsApi(): boolean {
+  return typeof browser.tabs?.sendMessage === 'function';
+}
+
+// Concurrent requests can each reach the relay before the offscreen document
+// finishes being created; `browser.offscreen.createDocument` throws if called
+// again while one already exists (or is being created), so the in-flight
+// promise is memoized synchronously (before any `await`) rather than
+// re-checking `hasDocument()` per call.
+let ensureComputeHostPromise: Promise<void> | undefined;
+
+function ensureComputeHost(): Promise<void> {
+  ensureComputeHostPromise ??= (async () => {
+    const hasDocument = await browser.offscreen.hasDocument();
+    if (hasDocument) return;
+    await browser.offscreen.createDocument({
+      url: browser.runtime.getURL('/offscreen.html'),
+      reasons: ['WORKERS'],
+      justification: 'Runs the sanitization pipeline, models and agent loop off the main thread (SPEC §4.1).',
+    });
+  })();
+  return ensureComputeHostPromise;
+}
+
+async function transportRequest<K extends keyof MessageMap['request']>(
+  type: K,
+  payload: MessageMap['request'][K]['request'],
+): Promise<MessageMap['request'][K]['response']> {
+  const message: EdwardMessage = { __edward: 'request', type: String(type), payload: encodeBinary(payload) };
+  const response = (await browser.runtime.sendMessage(message)) as { ok: true; result: unknown } | { ok: false; error: string };
+  if (!response.ok) throw new Error(response.error);
+  return decodeBinary(response.result) as MessageMap['request'][K]['response'];
+}
+
+function transportConnect<K extends keyof MessageMap['port']>(type: K): Port<MessageMap['port'][K]> {
+  const port = browser.runtime.connect({ name: String(type) });
+  return {
+    send(payload) {
+      port.postMessage(payload);
+    },
+    onMessage(handler) {
+      const listener = (message: unknown) => handler(message as MessageMap['port'][K]);
+      port.onMessage.addListener(listener);
+      return () => port.onMessage.removeListener(listener);
+    },
+    disconnect() {
+      port.disconnect();
+    },
+  };
+}
+
+const settings: KeyValueStore = {
+  async get<T>(key: string): Promise<T | undefined> {
+    const result = await browser.storage.local.get(key);
+    return result[key] as T | undefined;
+  },
+  async set<T>(key: string, value: T): Promise<void> {
+    await browser.storage.local.set({ [key]: value });
+  },
+  async remove(key: string): Promise<void> {
+    await browser.storage.local.remove(key);
+  },
+};
+
+async function getActiveTab(): Promise<TabRef> {
+  if (canUseTabsApi()) {
+    const [tab] = await browser.tabs.query({ active: true, currentWindow: true });
+    if (tab?.id === undefined || !tab.url) {
+      throw new Error('active tab has no accessible id/url (activeTab permission not yet granted?)');
+    }
+    return { tabId: tab.id, url: tab.url };
+  }
+  const message: EdwardMessage = { __edward: 'get-active-tab' };
+  const response = (await browser.runtime.sendMessage(message)) as TabRef;
+  return response;
+}
+
+async function sendToTab(tabId: number, msg: unknown): Promise<unknown> {
+  if (canUseTabsApi()) return browser.tabs.sendMessage(tabId, msg);
+  const message: EdwardMessage = { __edward: 'to-tab', tabId, msg };
+  return browser.runtime.sendMessage(message);
+}
+
+export function createChromiumPlatform(): Platform {
+  return {
+    name: 'chromium',
+    transport: { request: transportRequest, connect: transportConnect },
+    ensureComputeHost,
+    settings,
+    getActiveTab,
+    sendToTab,
+    async requestHostPermission(origin: string): Promise<boolean> {
+      return browser.permissions.request({ origins: [origin] });
+    },
+    assetUrl(path: string): string {
+      // WXT's generated `getURL` overloads only accept known entrypoint pages;
+      // `assetUrl` must also resolve arbitrary bundled paths (e.g. future
+      // public/models/* weights), so the stricter overload is bypassed here.
+      return (browser.runtime.getURL as (path: string) => string)(path);
+    },
+    async openSettings(): Promise<void> {
+      await browser.runtime.openOptionsPage();
+    },
+  };
+}
+
+// Registers the compute-host-side dispatch function. Called once by the
+// offscreen document's entrypoint (`src/entrypoints/offscreen/main.ts`).
+// Only handles messages relayed by the background router (`sender.tab`
+// undefined) — an original content-script broadcast that happens to also
+// reach this listener directly is ignored, so the background relay stays the
+// single authority for routing (§4.3.1).
+export function onComputeHostRequest(handler: (type: string, payload: unknown) => Promise<unknown>): void {
+  browser.runtime.onMessage.addListener((message: unknown, sender, sendResponse) => {
+    if (!isEdwardMessage(message) || message.__edward !== 'request' || sender.tab !== undefined) return false;
+    void handler(message.type, decodeBinary(message.payload))
+      .then((result) => sendResponse({ ok: true, result: encodeBinary(result) }))
+      .catch((error: unknown) => sendResponse({ ok: false, error: error instanceof Error ? error.message : 'unknown' }));
+    return true; // keep the message channel open for the async sendResponse above
+  });
+}
+
+// `browser.offscreen.createDocument()` resolves once the document exists, not
+// once its module has finished loading and called `onComputeHostRequest()` --
+// so the very first forward right after creation can race a listener that
+// isn't registered yet ("Could not establish connection"). A few short
+// retries absorb that one-time load gap without masking a real failure.
+async function forwardToOffscreen(message: EdwardMessage): Promise<unknown> {
+  const attempts = 5;
+  const delayMs = 25;
+  for (let attempt = 0; attempt < attempts; attempt++) {
+    try {
+      return await browser.runtime.sendMessage(message);
+    } catch (error) {
+      if (attempt === attempts - 1) throw error;
+      await new Promise((resolve) => setTimeout(resolve, delayMs));
+    }
+  }
+  throw new Error('unreachable');
+}
+
+// Router-only wiring for the background service worker (§3 architecture:
+// "BACKGROUND (router only)"). Relays content-script requests to the
+// offscreen document (creating it on demand) and offscreen's tab-bound
+// pushes back out to the right tab.
+export function startBackgroundRelay(): void {
+  browser.runtime.onMessage.addListener((message: unknown, sender, sendResponse) => {
+    if (!isEdwardMessage(message)) return false;
+
+    if (message.__edward === 'request') {
+      if (sender.tab === undefined) return false; // not from a tab — not this relay's job
+      void (async () => {
+        await ensureComputeHost();
+        return forwardToOffscreen(message) as Promise<{ ok: true; result: unknown } | { ok: false; error: string }>;
+      })()
+        .then(sendResponse)
+        .catch((error: unknown) => sendResponse({ ok: false, error: error instanceof Error ? error.message : 'unknown' }));
+      return true;
+    }
+
+    if (message.__edward === 'to-tab') {
+      void browser.tabs
+        .sendMessage(message.tabId, message.msg)
+        .then(sendResponse)
+        .catch(() => sendResponse(undefined));
+      return true;
+    }
+
+    if (message.__edward === 'get-active-tab') {
+      void getActiveTab()
+        .then(sendResponse)
+        .catch(() => sendResponse(undefined));
+      return true;
+    }
+
+    return false;
+  });
+}

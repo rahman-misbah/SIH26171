@@ -1,3 +1,2 @@
 export type * from './types';
-
-// Detection implementation arrives in M3 (SPEC §10).
+export { detectDevice } from './detect';

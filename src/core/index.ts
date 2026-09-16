@@ -1,3 +1,3 @@
-export {};
+export { bootstrapComputeHost } from './computeHost';
 
-// Pool, ids, hashing, time, and shared types arrive in M2/M3 (SPEC §17).
+// Pool, ids, hashing, time arrive later (SPEC §17) as their consumers need them.
