@@ -29,7 +29,7 @@ Done when:
 - [x] `npm run check` passes
 - [x] A deliberate boundary violation (e.g. `browser` used in `src/dom/`) fails lint
 
-## M2 — Contracts only · `todo`
+## M2 — Contracts only · `done`
 **Spec:** §4.2, §5, §7.5, §7.6, §9.2–9.3, §10, §11.1, §12.1–12.2, §13.1 · **Estimate:** ½ day
 
 Types, interfaces and type guards only — no implementations:
@@ -44,11 +44,11 @@ Types, interfaces and type guards only — no implementations:
 - `src/hw/types.ts` (DeviceProfile)
 
 Done when:
-- [ ] Every file above exists and compiles
-- [ ] Type-guard tests pass
-- [ ] I can explain every type (`/milestone-quiz`)
-- [ ] `SanitizedObservation` has no field that could carry raw content; `LogRecord` has no free-text field
-- [ ] Ambiguities found are listed in the Log and resolved
+- [x] Every file above exists and compiles
+- [x] Type-guard tests pass
+- [x] I can explain every type (`/milestone-quiz`)
+- [x] `SanitizedObservation` has no field that could carry raw content; `LogRecord` has no free-text field
+- [x] Ambiguities found are listed in the Log and resolved
 
 After M2, contract files change only deliberately, with a Log entry.
 
@@ -184,3 +184,14 @@ Done when:
 - Deviations from SPEC: (1) WXT's default `manifestVersion` is 3 for Chrome but 2 for Firefox — forced to 3 explicitly (SPEC §4.3 item 10). (2) The manifest does not literally declare both `background.scripts` and `background.service_worker` in one file, as §4 originally phrased it — WXT builds one manifest per target and picks the correct field from a single `defineBackground()` source, same net effect via a different mechanism (SPEC §4.3 item 11). (3) `offscreen` permission is included only in the Chromium manifest, omitted on Firefox, which has no such API (SPEC §4.3 item 12). All three are now documented in SPEC §4.3 and CLAUDE.md's "Browser quirks found".
 - Noticed (out of scope): `web-ext` (required by WXT's peer deps for Firefox dev/build) pulls in `image-size` via `addons-linter`, which has 4 known high-severity DoS advisories (ICNS/JXL/HEIF infinite-loop parsers). Dev-tooling only, never shipped in the built extension; no non-breaking fix exists upstream yet (`npm audit fix --force` would downgrade `web-ext` below WXT's required `>=9.2.0`). Firefox AMO packaging will eventually need `browser_specific_settings.gecko.id` and `gecko.data_collection_permissions` (SPEC §4.3 item 13) — not needed before a packaging milestone.
 - Notes for next milestone: M2 is contracts-only (types/interfaces/type guards, no implementations) — `src/platform/types.ts` (Platform, Transport) + `messages.ts`, `src/backend/types.ts`, `src/backend/llm/types.ts`, `src/agent/schema.ts` (+ type guard + tests), `src/logging/schema.ts`, `src/dom/types.ts`, `src/sanitize/types.ts`, `src/hw/types.ts`, `src/models/capabilities.ts` + `provider.ts`. Each folder's current empty `index.ts` stub should be reconsidered once its types.ts lands (either re-export from it or drop the placeholder). Two CLAUDE.md ESLint boundary rules are still deferred with nothing to enforce yet — orchestrator/assembler depending only on `AgentBackend`/`SanitizedObservation`, and consumers using `getModel()`/`getBackend()` — revisit once the registries/orchestrator exist (M3/M6).
+
+### 2026-09-16 — M2 Contracts only
+- Summary: Added the 10 contract files M2 lists — `models/capabilities.ts` + `provider.ts` (§9.2–9.3), `backend/types.ts` (§12.1), `backend/llm/types.ts` (§12.2), `agent/schema.ts` (§13.1, incl. hand-written `isAgentResponse`/`isAction` type guards), `logging/schema.ts` (§11.1), `platform/types.ts` + `messages.ts` (§4.2), `dom/types.ts` (§5.1–5.2, §7.5), `sanitize/types.ts` (§7.1–7.6), `hw/types.ts` (§10) — plus tests-first coverage for the type guard (`tests/unit/agent/schema.test.ts`, 22 cases). Every folder's `index.ts` stub became a real barrel re-export instead of `export {}`.
+- Measurements: 33/33 unit tests pass (11 scaffold + 22 schema); `npm run check` (tsc strict + ESLint boundaries) clean; production build unaffected (6.28 kB, same as M1) since these are erased-at-build types plus one small runtime validator.
+- Deviations from SPEC (ambiguity resolutions, none contradicting SPEC, all filling gaps the milestone's own file list implied but SPEC's prose didn't spell out mechanically):
+  1. `Logger` (a `timed<T>(op, meta, fn)` interface) added to `logging/schema.ts`, not in M2's literal file list, because `models/provider.ts`'s `ModelProvider.load()` (§9.3) takes a `logger: Logger` and needs the type to exist now; the ring-buffer/IndexedDB implementation still arrives in M3.
+  2. `platform/messages.ts`'s `MessageMap` is deliberately empty (`Record<never, ...>` placeholders for `request`/`port`) rather than speculatively designed — concrete message entries (ping in M3, DOM chunks in M5, actions in M6, images in M8) get added directly to this file as each milestone needs them, not merged in via a generic mechanism.
+  3. `dom/types.ts` splits `SkeletonNode` (Phase A: structural fields + a `pending_content: ContentField[]` pointer list) from `SanitizedNode` (Phase A shape + a `content` map merged in from Phase B), since §5.1 says Phase A "reads no text, runs no sanitization" while its own field table lists content fields Phase A must still reference. Also added `ExclusionMarker` (`iframe_skipped`, `shadow_closed_skipped`, `canvas_skipped`, `svg_skipped`, `video_skipped`) and `ImageOmittedReason` (`unreadable`, `detector_failed`, `request_limit`) as typed fields on `SkeletonNode`/`SanitizedNode`, using the literal marker strings already named in SPEC §5.1/§6.1/§14.3, so "every exclusion leaves a marker" (§2.10) has a place to land at the type level.
+  4. `isAgentResponse` (§13.1) enforces the numeric caps (`actions.length <= 3`, `thought.length <= 200`, `wait.ms <= 3000`) as validation failures rather than treating them as advisory/clamped-later — an over-cap response is `invalid`, which will drive the LLM backend's one-retry-then-fail path (§12.2) once M6 exists. Token-content semantics (e.g. §13.4's "tokens forbidden in `navigate.url`") are explicitly *not* checked here — that's a separate policy pass that needs the token map, which doesn't exist until resolution time.
+- Noticed (out of scope): none found in-code during this milestone.
+- Notes for next milestone: M3 (Infrastructure) implements the real `Logger` behind the type-level contract added here, and `chromium.ts`/`gecko.ts` against `Platform`/`Transport`, adding the first concrete `MessageMap` entries (starting with `ping`) directly to `platform/messages.ts`. Separately (post-`/milestone-check` design discussion, not yet acted on): for the eventual M10 benchmark table / "resource utilization" story, we decided *against* capturing exact CPU/GPU model (e.g. Chromium's privileged `chrome.system.cpu` API) — it's Chromium-only, needs an extra permission, and cuts against the extension's minimal-footprint pitch. `DeviceProfile`'s existing structural fields (`gpu.available`, `compute`, `hardwareConcurrency`, `deviceMemoryGB`) are sufficient to distinguish performance regimes (e.g. GPU+16-core vs. WASM+4-core); a human-readable machine label ("workstation" vs. "low-end laptop") should be an operator-supplied argument to the M10 benchmark script, not a field on `SessionRecord`/`LogRecord`. Also flagged as worth reconsidering when M3's Logger is implemented (nothing added to the schema yet, revisit only if the M9/M10 latency story needs it): worker-pool occupancy / queue-wait metrics tied to §9.6's bounded pools, an optional Chromium-only JS-heap snapshot (`performance.memory`), and Long-Tasks-API-based main-thread-responsiveness counts.

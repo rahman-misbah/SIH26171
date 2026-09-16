@@ -1,3 +1,3 @@
-export {};
+export type * from './schema';
 
-// Logger, schema, IndexedDB sink, aggregate, export arrive in M2/M3 (SPEC §11).
+// Logger implementation, ring buffer, IndexedDB sink, aggregate, export arrive in M3 (SPEC §11).

@@ -1,3 +1,4 @@
-export {};
+export type * from './capabilities';
+export type * from './provider';
 
-// Capabilities, provider contract, registry, models.config arrive in M2/M7 (SPEC §9).
+// Registry, models.config arrive in M7 (SPEC §9.4).

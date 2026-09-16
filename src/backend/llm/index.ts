@@ -1,3 +1,3 @@
-export {};
+export type * from './types';
 
-// LlmAgentBackend, ModelClient types, clients.config arrive in M2/M6 (SPEC §12.2).
+// LlmAgentBackend, clients.config arrive in M6 (SPEC §12.2).

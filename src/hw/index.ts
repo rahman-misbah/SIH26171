@@ -1,3 +1,3 @@
-export {};
+export type * from './types';
 
-// Hardware detection arrives in M3 (SPEC §10).
+// Detection implementation arrives in M3 (SPEC §10).

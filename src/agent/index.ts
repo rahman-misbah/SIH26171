@@ -1,3 +1,3 @@
-export {};
+export * from './schema';
 
-// Schema, validate, policy, resolver, loop, assemble arrive in M2/M6 (SPEC §13, §14).
+// Validate (beyond the schema guard), policy, resolver, loop, assemble arrive in M6 (SPEC §13, §14).
