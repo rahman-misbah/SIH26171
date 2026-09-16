@@ -38,6 +38,12 @@ Browser extension that acts as a privacy firewall for browser agents: it extract
 - Unit tests in `tests/unit/` mirroring `src/`.
 - Brief comments on non-obvious async/worker/messaging code and on every threshold or weight (the team must be able to explain it to judges).
 
+## Milestones
+- The build follows `docs/MILESTONES.md`. Work only on the milestone marked `in progress`; never start the next one on your own.
+- Milestones are driven by `/milestone`, `/milestone-check`, `/milestone-quiz`, `/milestone-done`. Only `/milestone-done` may set a milestone to `done`.
+- Read the latest "Notes for next milestone" in the Log before planning.
+- Out-of-scope issues go in a "Noticed" list, not into the code.
+
 ## Workflow
 - Use plan mode for each milestone. Plans cite spec sections. Wait for approval before editing.
 - Tests first for: regex tier (Verhoeff, Luhn), token map, egress policy, public-email heuristic, response validation.
