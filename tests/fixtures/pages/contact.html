@@ -1,0 +1,26 @@
+<!doctype html>
+<!-- M4 fixture (§18 item 1, §7.5): a support email inside a marked contact
+     landmark, using schema.org ContactPoint markup and a "Contact us" heading —
+     the positive-signal case for §7.5's public-email heuristic (role local-part
+     +3, landmark/contact heading +2), contrasted with comments.html's private
+     personal email. -->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Contact — canary fixture</title>
+  </head>
+  <body>
+    <nav>Home | Products | Contact</nav>
+    <main>
+      <h1>Contact us</h1>
+      <div itemscope itemtype="https://schema.org/ContactPoint">
+        <p>
+          For support, email
+          <a href="mailto:support@example.com" itemprop="email" data-canary="email-public-support"
+            >support@example.com</a
+          >.
+        </p>
+      </div>
+    </main>
+  </body>
+</html>

@@ -13,6 +13,7 @@ Browser extension that acts as a privacy firewall for browser agents: it extract
 - `npm run check` — `tsc --noEmit` + ESLint (boundary rules)
 - `npm test` — Vitest unit tests
 - `npm run test:e2e` — Playwright (Chromium, unpacked extension)
+- `npm run fetch-models` — downloads tier-1 model weights into `public/models/` (git-ignored)
 
 ## Non-negotiables (SPEC §2, §20)
 - Fail closed: uncertain, failed or unreadable → redact or withhold. Never pass through as "clean".

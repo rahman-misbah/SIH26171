@@ -1,0 +1,26 @@
+<!doctype html>
+<!-- M4 fixture (§18 item 1, §7.5): a UGC comment thread with a personal email
+     embedded in reader-submitted content. §7.5's public-email heuristic scores
+     UGC-block context negatively (-3), so this is the "stays private" contrast
+     case to contact.html's public support email. -->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Comments — canary fixture</title>
+  </head>
+  <body>
+    <article>
+      <h1>Blog post title</h1>
+      <p>Some article content unrelated to any canary.</p>
+    </article>
+    <section aria-label="Comments">
+      <h2>Comments</h2>
+      <div class="comment">
+        <p>Great post! Email me at <span data-canary="email-personal">priya.sharma.canary@example.com</span> if you want to chat.</p>
+      </div>
+      <div class="comment">
+        <p>Totally agree with the above.</p>
+      </div>
+    </section>
+  </body>
+</html>

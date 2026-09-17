@@ -1,0 +1,21 @@
+<!doctype html>
+<!-- M4 fixture (§18 item 2): non-secret form inputs carrying regex-tier canaries
+     (UPI, PAN, IFSC, card, Aadhaar variants) for the Tier-1 regex unit tests and
+     the canary leak test. None of these fields are secret (§5.1) — contrast with
+     secret-form.html. -->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Form — canary fixture</title>
+  </head>
+  <body>
+    <form>
+      <label>UPI ID <input type="text" name="upi" value="priya.sharma@okaxis" /></label>
+      <label>PAN <input type="text" name="pan" value="ABCPE1234F" /></label>
+      <label>IFSC <input type="text" name="ifsc" value="HDFC0001234" /></label>
+      <label>Card number <input type="text" name="card" value="4111 1111 1111 1111" /></label>
+      <label>Aadhaar <input type="text" name="aadhaar" value="2345 6789 0124" /></label>
+      <label>Aadhaar (masked) <input type="text" name="aadhaar_masked" value="XXXX XXXX 1234" readonly /></label>
+    </form>
+  </body>
+</html>

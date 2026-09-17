@@ -1,0 +1,18 @@
+<!doctype html>
+<!-- M4 fixture (§18 item 1, §5.1, §6.1): a canary inside a same-page iframe.
+     Iframe content is out of scope for the DOM pipeline entirely — M5 should
+     leave an `iframe_skipped` marker (src/dom/types.ts) on this node rather
+     than reading into it. -->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Iframe — canary fixture</title>
+  </head>
+  <body>
+    <p>Page content outside the iframe (not a canary).</p>
+    <iframe
+      title="embedded canary"
+      srcdoc="&lt;p data-canary=&quot;email-personal&quot;&gt;priya.sharma.canary@example.com&lt;/p&gt;"
+    ></iframe>
+  </body>
+</html>

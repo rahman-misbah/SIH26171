@@ -1,0 +1,149 @@
+[
+  {
+    "id": "email-personal",
+    "type": "EMAIL",
+    "value": "priya.sharma.canary@example.com",
+    "valid": true,
+    "note": "personal email; must always be tokenized (§7.5 default private)"
+  },
+  {
+    "id": "email-public-support",
+    "type": "EMAIL",
+    "value": "support@example.com",
+    "valid": true,
+    "note": "role local-part inside a marked contact landmark; public per §7.5 heuristic, so it should stay visible once M7 lands, but still counts as a canary for M4/M5's raw-leak test"
+  },
+  {
+    "id": "upi",
+    "type": "UPI",
+    "value": "priya.sharma@okaxis",
+    "valid": true,
+    "note": "PSP handle 'okaxis' has no dot, checked before EMAIL (§7.1)"
+  },
+  {
+    "id": "phone",
+    "type": "PHONE",
+    "value": "+91 98765 43210",
+    "valid": true,
+    "note": "India-aware format, 10 digits starting 6-9 (§7.1)"
+  },
+  {
+    "id": "aadhaar-valid",
+    "type": "AADHAAR",
+    "value": "2345 6789 0124",
+    "valid": true,
+    "note": "12 digits, Verhoeff checksum verified valid"
+  },
+  {
+    "id": "aadhaar-invalid",
+    "type": "AADHAAR",
+    "value": "2345 6789 0125",
+    "valid": false,
+    "note": "same prefix as aadhaar-valid, last digit changed so the Verhoeff checksum fails"
+  },
+  {
+    "id": "aadhaar-masked",
+    "type": "AADHAAR",
+    "value": "XXXX XXXX 1234",
+    "valid": true,
+    "note": "already-masked form; §7.1 redacts these too even without a checksum to verify"
+  },
+  {
+    "id": "pan",
+    "type": "PAN",
+    "value": "ABCPE1234F",
+    "valid": true,
+    "note": "[A-Z]{5}[0-9]{4}[A-Z], 4th char 'P' = individual holder type (§7.1)"
+  },
+  {
+    "id": "card-valid",
+    "type": "CARD",
+    "value": "4111 1111 1111 1111",
+    "valid": true,
+    "note": "canonical Luhn-valid test PAN (not a real card), 16 digits"
+  },
+  {
+    "id": "card-invalid",
+    "type": "CARD",
+    "value": "4111 1111 1111 1112",
+    "valid": false,
+    "note": "last digit changed so the Luhn checksum fails"
+  },
+  {
+    "id": "ifsc",
+    "type": "IFSC",
+    "value": "HDFC0001234",
+    "valid": true,
+    "note": "[A-Z]{4}0[A-Z0-9]{6} (§7.1)"
+  },
+  {
+    "id": "passport",
+    "type": "PASSPORT",
+    "value": "K1234567",
+    "valid": true,
+    "note": "optional-if-time regex per §7.1; illustrative format only, no checksum"
+  },
+  {
+    "id": "voter-id",
+    "type": "VOTER_ID",
+    "value": "ABC1234567",
+    "valid": true,
+    "note": "optional-if-time regex per §7.1 (EPIC number); illustrative format only"
+  },
+  {
+    "id": "gstin",
+    "type": "GSTIN",
+    "value": "27ABCPE1234F1Z5",
+    "valid": true,
+    "note": "optional-if-time regex per §7.1; illustrative format only, checksum not computed"
+  },
+  {
+    "id": "vehicle-reg",
+    "type": "VEHICLE_REG",
+    "value": "DL01AB1234",
+    "valid": true,
+    "note": "optional-if-time regex per §7.1; illustrative format only"
+  },
+  {
+    "id": "dob",
+    "type": "DOB",
+    "value": "14/08/1990",
+    "valid": true,
+    "note": "date near a 'DOB' label (§7.1 optional-if-time), also an NER target (§7.2, M7)"
+  },
+  {
+    "id": "name",
+    "type": "NAME",
+    "value": "Priya Sharma Canary",
+    "valid": true,
+    "note": "NER target, not regex-detected (§7.2, M7) — kept as a canary from M4 so the leak test already covers it"
+  },
+  {
+    "id": "address",
+    "type": "ADDRESS",
+    "value": "221B Canary Lane, Sector 12, New Delhi 110012",
+    "valid": true,
+    "note": "NER target, not regex-detected (§7.2, M7)"
+  },
+  {
+    "id": "secret-password",
+    "type": "OTHER",
+    "value": "Sup3rSecretCanary!",
+    "valid": true,
+    "note": "value of a password field in secret-form.html — must never be read at all (§5.1), regardless of PII type"
+  },
+  {
+    "id": "secret-otp",
+    "type": "OTHER",
+    "value": "482913",
+    "valid": true,
+    "note": "value of a one-time-code field in secret-form.html — must never be read at all (§5.1)"
+  },
+  {
+    "id": "query-token",
+    "type": "OTHER",
+    "value": "eyCanaryTok3n.abcDEF456",
+    "valid": true,
+    "note": "sensitive query-string value in query-links.html (key 'token'/'session'/etc.) — redacted regardless of content per §7.8"
+  }
+]

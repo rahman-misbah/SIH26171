@@ -1,0 +1,18 @@
+<!doctype html>
+<!-- M4 fixture (§18 item 1, §6.1): a canary drawn into a <canvas>. Canvas is
+     out of scope for the image pipeline (§6.1) — M5/M8 should leave a
+     `canvas_skipped` marker (src/dom/types.ts) rather than reading its pixels. -->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Canvas — canary fixture</title>
+  </head>
+  <body>
+    <canvas id="canaryCanvas" width="400" height="80"></canvas>
+    <script>
+      const ctx = document.getElementById('canaryCanvas').getContext('2d');
+      ctx.font = '20px sans-serif';
+      ctx.fillText('priya.sharma.canary@example.com', 10, 40);
+    </script>
+  </body>
+</html>

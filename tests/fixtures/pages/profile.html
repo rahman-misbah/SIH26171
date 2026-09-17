@@ -1,0 +1,19 @@
+<!doctype html>
+<!-- M4 fixture (§18 item 1): a profile page carrying NAME/ADDRESS/DOB/PHONE canaries
+     in plain visible text, for the canary leak test and (later) M7's NER recall check. -->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Profile — canary fixture</title>
+  </head>
+  <body>
+    <main>
+      <h1 data-canary="name">Priya Sharma Canary</h1>
+      <p>
+        Address: <span data-canary="address">221B Canary Lane, Sector 12, New Delhi 110012</span>
+      </p>
+      <p>Date of birth: <span data-canary="dob">14/08/1990</span></p>
+      <p>Phone: <span data-canary="phone">+91 98765 43210</span></p>
+    </main>
+  </body>
+</html>
