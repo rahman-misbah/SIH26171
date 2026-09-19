@@ -26,6 +26,11 @@ function toReasonCode(error: unknown): ReasonCode {
 
 export interface RuntimeLogger extends Logger {
   recordSession(session: SessionRecord): void;
+  // Ingests an already-timed record from another context (e.g. the content
+  // script, which has no logger of its own -- its `indexedDB` would hit the
+  // *page's* origin, not the extension's -- so it forwards a finished
+  // LogRecord for the compute host to persist instead of computing it here).
+  record(record: LogRecord): void;
   flush(): Promise<void>;
   stop(): void;
 }
@@ -77,6 +82,9 @@ export function createLogger(sink: LogSink): RuntimeLogger {
     },
     recordSession(session: SessionRecord): void {
       pendingSessions.push(session);
+    },
+    record(record: LogRecord): void {
+      push(record);
     },
     flush,
     stop(): void {

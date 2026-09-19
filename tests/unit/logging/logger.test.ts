@@ -85,6 +85,25 @@ describe('createLogger.timed', () => {
     logger.stop();
   });
 
+  it('accepts a pre-timed record forwarded from another context (e.g. the content script)', async () => {
+    const sink = createFakeSink();
+    const logger = createLogger(sink);
+
+    logger.record({
+      session_id: 's1',
+      op: 'dom.phase_a',
+      t_start: 100,
+      t_end: 140,
+      duration_ms: 40,
+      outcome: 'ok',
+    });
+
+    await logger.flush();
+    expect(sink.records).toHaveLength(1);
+    expect(sink.records[0]).toMatchObject({ op: 'dom.phase_a', duration_ms: 40 });
+    logger.stop();
+  });
+
   it('flushes a recorded session', async () => {
     const sink = createFakeSink();
     const logger = createLogger(sink);

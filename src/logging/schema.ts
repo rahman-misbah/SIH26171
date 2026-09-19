@@ -47,6 +47,7 @@ export type ReasonCode =
   | 'unreadable'
   | 'detector_failed'
   | 'request_limit'
+  | 'guard_triggered'
   | 'unknown';
 
 export interface LogRecord {
