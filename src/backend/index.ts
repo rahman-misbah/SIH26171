@@ -1,5 +1,7 @@
 export type * from './types';
 export { getBackend } from './registry';
+export { configureBackendDeps, type BackendDeps } from './deps';
+export { getBackendSettings, setBackendSettings, type BackendSettings, type LlmProvider, type LlmProviderSettings } from './settings';
+export { MOCK_SCRIPT_STORAGE_KEY } from './mock';
 
-// llm/http entries in backends.config arrive in M6 (SPEC §12); only the M4
-// test-only 'mock' backend is registered so far (docs/MILESTONES.md M4 Log).
+// HttpAgentBackend (§12.3) is M11 scope, per docs/MILESTONES.md.

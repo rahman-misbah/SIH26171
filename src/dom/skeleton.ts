@@ -80,6 +80,27 @@ function computeState(el: Element): NodeState | undefined {
   return Object.keys(state).length > 0 ? state : undefined;
 }
 
+// §13.4 rule 4: the enclosing form's resolved action origin, if this element
+// is form-associated. `HTMLFormElement.action` is always resolved to an
+// absolute URL by the browser (defaulting to the page's own URL when the
+// `action` attribute is absent), so this only differs from the page origin
+// when the form genuinely posts cross-origin.
+function formActionOrigin(el: Element): string | undefined {
+  const form =
+    el instanceof HTMLInputElement ||
+    el instanceof HTMLSelectElement ||
+    el instanceof HTMLTextAreaElement ||
+    el instanceof HTMLButtonElement
+      ? el.form
+      : null;
+  if (!form) return undefined;
+  try {
+    return new URL(form.action).origin;
+  } catch {
+    return undefined;
+  }
+}
+
 function isScrollable(el: Element, doc: Document): boolean {
   const style = doc.defaultView?.getComputedStyle(el);
   if (!style) return false;
@@ -271,6 +292,7 @@ export async function runPhaseA(doc: Document): Promise<PhaseAResult> {
         attrs: type || name ? { type: type ?? undefined, name: name ?? undefined } : undefined,
         flags: semanticClassFlags(el).length > 0 ? semanticClassFlags(el) : undefined,
         secret: secret || undefined,
+        form_action_origin: formActionOrigin(el),
         pending_content: pending,
       });
       registry.register(id, el);

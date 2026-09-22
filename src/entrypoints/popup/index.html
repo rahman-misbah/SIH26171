@@ -3,9 +3,47 @@
   <head>
     <meta charset="utf-8" />
     <title>Edward</title>
+    <style>
+      body {
+        font: 13px/1.4 -apple-system, system-ui, sans-serif;
+        width: 260px;
+        margin: 0;
+        padding: 12px;
+      }
+      textarea {
+        width: 100%;
+        box-sizing: border-box;
+        font: inherit;
+        resize: vertical;
+        min-height: 60px;
+      }
+      .row {
+        display: flex;
+        gap: 8px;
+        margin-top: 8px;
+      }
+      button {
+        font: inherit;
+        flex: 1;
+        padding: 6px 0;
+        cursor: pointer;
+      }
+      #status {
+        margin-top: 8px;
+        color: #555;
+        min-height: 1.2em;
+      }
+    </style>
   </head>
   <body>
-    <div id="app">Edward</div>
+    <div id="app">
+      <textarea id="task" placeholder="What should Edward do on this page?"></textarea>
+      <div class="row">
+        <button id="start" type="button">Start</button>
+        <button id="stop" type="button">Stop</button>
+      </div>
+      <div id="status"></div>
+    </div>
     <script type="module" src="./main.ts"></script>
   </body>
 </html>

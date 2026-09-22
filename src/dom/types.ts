@@ -59,6 +59,10 @@ export interface SkeletonNode {
   secret?: boolean;
   marker?: ExclusionMarker;
   image_omitted?: ImageOmittedReason;
+  // §13.4 rule 4: the origin of the enclosing <form>'s `action`, if any --
+  // a plain structural fact (not page content, not PII), so it's captured
+  // directly in Phase A rather than routed through Phase B sanitization.
+  form_action_origin?: string;
   // Fields captured in Phase A whose sanitized text is still pending from
   // Phase B; resolved into `SanitizedNode.content` by (node_id, field).
   pending_content: ContentField[];

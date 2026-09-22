@@ -7,7 +7,8 @@
 // ArrayBuffer <-> base64 re-encoding is needed here.
 
 import { browser } from 'wxt/browser';
-import type { MessageMap } from './messages';
+import { isTabPushMessage } from './messages';
+import type { MessageMap, TabPushMessage } from './messages';
 import type { KeyValueStore, Platform, Port, TabRef } from './types';
 
 async function transportRequest<K extends keyof MessageMap['request']>(
@@ -58,6 +59,16 @@ async function getActiveTab(): Promise<TabRef> {
   return { tabId: tab.id, url: tab.url };
 }
 
+// Content-script side only, same message shape/behaviour as chromium.ts's
+// (no relay hop here either -- see this file's header comment).
+function onTabPush(handler: (msg: TabPushMessage) => void): void {
+  browser.runtime.onMessage.addListener((message: unknown) => {
+    if (!isTabPushMessage(message)) return false;
+    handler(message);
+    return false;
+  });
+}
+
 export function createGeckoPlatform(): Platform {
   return {
     name: 'gecko',
@@ -70,6 +81,7 @@ export function createGeckoPlatform(): Platform {
     async sendToTab(tabId: number, msg: unknown): Promise<unknown> {
       return browser.tabs.sendMessage(tabId, msg);
     },
+    onTabPush,
     async requestHostPermission(origin: string): Promise<boolean> {
       return browser.permissions.request({ origins: [origin] });
     },

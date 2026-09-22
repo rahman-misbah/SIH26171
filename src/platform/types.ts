@@ -2,7 +2,7 @@
 // gecko.ts, webkit.ts) satisfies. Nothing outside src/platform/ may import
 // `browser`/`chrome` — everything else depends only on this interface.
 
-import type { MessageMap } from './messages';
+import type { MessageMap, TabPushMessage } from './messages';
 
 export interface TabRef {
   tabId: number;
@@ -39,6 +39,11 @@ export interface Platform {
   settings: KeyValueStore;
   getActiveTab(): Promise<TabRef>;
   sendToTab<M>(tabId: number, msg: M): Promise<unknown>;
+  // Content-script-only: registers this tab's listener for popup-initiated
+  // start/stop pushes (§13.2, §4.3.5). A no-op call site elsewhere (popup,
+  // compute host) would just never receive anything -- there's nothing to
+  // push to them.
+  onTabPush(handler: (msg: TabPushMessage) => void): void;
   captureVisibleTab?(tabId: number): Promise<Blob>; // optional fallback, rate-limited
   requestHostPermission(origin: string): Promise<boolean>; // for custom backend endpoints (§12.4)
   assetUrl(path: string): string; // runtime.getURL

@@ -1,4 +1,5 @@
 export * from './schema';
 export { assembleObservation, type AssembleInput, type AssembleResult, type ContentResult } from './assemble';
-
-// Validate (beyond the schema guard), policy, resolver, loop arrive in M6 (SPEC §13).
+export { checkPolicy, type PolicyContext, type PolicyResult } from './policy';
+export { resolveActionTokens } from './resolveTokens';
+export { createAgentLoop, MAX_STEPS, type AgentLoop, type DecideStepInput, type DecideStepResult } from './loop';

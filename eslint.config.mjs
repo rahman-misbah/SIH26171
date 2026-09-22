@@ -2,11 +2,18 @@ import js from '@eslint/js';
 import tseslint from 'typescript-eslint';
 import wxtAutoImports from './.wxt/eslint-auto-imports.mjs';
 
-// CLAUDE.md "Boundaries (enforced by ESLint)". Only the two mechanically-enforceable
-// rules are implemented in M1 — the other two boundary bullets (orchestrator/assembler
-// depending only on AgentBackend/SanitizedObservation; consumers using getModel()/
-// getBackend()) have no concrete modules to restrict yet and are deferred to M3/M6
-// (see docs/MILESTONES.md Log).
+// CLAUDE.md "Boundaries (enforced by ESLint)". Boundaries A/B shipped in M1.
+// Boundary C (consumers use getBackend(), never import a backend
+// implementation directly) ships in M6, once src/backend/llm/ and
+// src/backend/mock.ts exist as things to restrict (see docs/MILESTONES.md
+// M2 Log). The remaining bullet -- orchestrator/assembler depending only on
+// AgentBackend/SanitizedObservation -- has no separate module to restrict:
+// src/agent/loop.ts *is* the orchestrator and already only imports
+// @/backend/types (type-only) plus getBackend()'s callers pass it an
+// already-resolved AgentBackend instance.
+const backendConsumerRestriction = {
+  message: 'Backend implementations are only allowed in src/backend/ -- consumers use getBackend() (SPEC §12.4, CLAUDE.md boundaries).',
+};
 const extensionApiRestriction = {
   message:
     'Extension/browser APIs are only allowed in src/platform/ (SPEC §4.2, CLAUDE.md boundaries).',
@@ -75,6 +82,23 @@ export default tseslint.config(
               group: ['@mediapipe/*'],
               message: 'Model libraries are only allowed in src/models/providers/ (SPEC §9.1).',
             },
+          ],
+        },
+      ],
+    },
+  },
+  {
+    // Boundary C: backend implementations restricted to src/backend/ itself
+    // (SPEC §12.4).
+    files: ['src/**/*.ts', 'src/**/*.tsx'],
+    ignores: ['src/backend/**'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          patterns: [
+            { group: ['@/backend/llm', '@/backend/llm/*'], ...backendConsumerRestriction },
+            { group: ['@/backend/mock'], ...backendConsumerRestriction },
           ],
         },
       ],

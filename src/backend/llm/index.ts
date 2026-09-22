@@ -1,3 +1,4 @@
 export type * from './types';
-
-// LlmAgentBackend, clients.config arrive in M6 (SPEC §12.2).
+export { LlmAgentBackend, type LlmAgentBackendDeps } from './backend';
+export { buildModelRequest } from './serialize';
+export { parseAgentResponse } from './parseResponse';

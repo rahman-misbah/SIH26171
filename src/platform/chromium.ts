@@ -11,15 +11,25 @@
 // and use `sender.tab` (present only for messages that genuinely came from a
 // tab) to tell an original request from an already-relayed one apart, so a
 // broadcast a listener sent itself is never mistaken for new inbound work.
+//
+// §4.3 item 15 (new, found building M6): offscreen documents are even more
+// restricted than that comment implies -- per Chrome's own docs, "only the
+// chrome.runtime messaging APIs are exposed to the offscreen document" to
+// discourage using it as a background-page replacement. `chrome.storage`,
+// `chrome.permissions` and `chrome.tabs` are all unavailable there, not just
+// `tabs`. `settings` (KeyValueStore) is relayed through background the same
+// way tab-bound calls already are.
 
 import { browser } from 'wxt/browser';
-import type { MessageMap } from './messages';
+import { isTabPushMessage } from './messages';
+import type { MessageMap, TabPushMessage } from './messages';
 import type { KeyValueStore, Platform, Port, TabRef } from './types';
 
 type EdwardMessage =
   | { __edward: 'request'; type: string; payload: unknown }
   | { __edward: 'to-tab'; tabId: number; msg: unknown }
-  | { __edward: 'get-active-tab' };
+  | { __edward: 'get-active-tab' }
+  | { __edward: 'settings'; op: 'get' | 'set' | 'remove'; key: string; value?: unknown };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null;
@@ -74,6 +84,11 @@ function canUseTabsApi(): boolean {
   return typeof browser.tabs?.sendMessage === 'function';
 }
 
+// True everywhere except the offscreen document (§4.3 item 15).
+function canUseStorageApi(): boolean {
+  return typeof browser.storage?.local?.get === 'function';
+}
+
 // Concurrent requests can each reach the relay before the offscreen document
 // finishes being created; `browser.offscreen.createDocument` throws if called
 // again while one already exists (or is being created), so the in-flight
@@ -123,14 +138,28 @@ function transportConnect<K extends keyof MessageMap['port']>(type: K): Port<Mes
 
 const settings: KeyValueStore = {
   async get<T>(key: string): Promise<T | undefined> {
-    const result = await browser.storage.local.get(key);
-    return result[key] as T | undefined;
+    if (canUseStorageApi()) {
+      const result = await browser.storage.local.get(key);
+      return result[key] as T | undefined;
+    }
+    const message: EdwardMessage = { __edward: 'settings', op: 'get', key };
+    return (await browser.runtime.sendMessage(message)) as T | undefined;
   },
   async set<T>(key: string, value: T): Promise<void> {
-    await browser.storage.local.set({ [key]: value });
+    if (canUseStorageApi()) {
+      await browser.storage.local.set({ [key]: value });
+      return;
+    }
+    const message: EdwardMessage = { __edward: 'settings', op: 'set', key, value };
+    await browser.runtime.sendMessage(message);
   },
   async remove(key: string): Promise<void> {
-    await browser.storage.local.remove(key);
+    if (canUseStorageApi()) {
+      await browser.storage.local.remove(key);
+      return;
+    }
+    const message: EdwardMessage = { __edward: 'settings', op: 'remove', key };
+    await browser.runtime.sendMessage(message);
   },
 };
 
@@ -153,6 +182,19 @@ async function sendToTab(tabId: number, msg: unknown): Promise<unknown> {
   return browser.runtime.sendMessage(message);
 }
 
+// Content-script side only. `sendToTab` (popup or, for 'stopTask', this same
+// tab's own overlay) reaches this tab's content script directly via
+// `browser.tabs.sendMessage`/relay -- never broadcast to other tabs or
+// contexts -- so no `sender` filtering is needed here, unlike
+// `onComputeHostRequest`'s relay-vs-original disambiguation.
+function onTabPush(handler: (msg: TabPushMessage) => void): void {
+  browser.runtime.onMessage.addListener((message: unknown) => {
+    if (!isTabPushMessage(message)) return false;
+    handler(message);
+    return false; // no response expected
+  });
+}
+
 export function createChromiumPlatform(): Platform {
   return {
     name: 'chromium',
@@ -161,6 +203,7 @@ export function createChromiumPlatform(): Platform {
     settings,
     getActiveTab,
     sendToTab,
+    onTabPush,
     async requestHostPermission(origin: string): Promise<boolean> {
       return browser.permissions.request({ origins: [origin] });
     },
@@ -240,6 +283,17 @@ export function startBackgroundRelay(): void {
 
     if (message.__edward === 'get-active-tab') {
       void getActiveTab()
+        .then(sendResponse)
+        .catch(() => sendResponse(undefined));
+      return true;
+    }
+
+    if (message.__edward === 'settings') {
+      void (async () => {
+        if (message.op === 'get') return (await browser.storage.local.get(message.key))[message.key];
+        if (message.op === 'set') return browser.storage.local.set({ [message.key]: message.value });
+        return browser.storage.local.remove(message.key);
+      })()
         .then(sendResponse)
         .catch(() => sendResponse(undefined));
       return true;

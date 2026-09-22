@@ -12,6 +12,6 @@ describe('getBackend', () => {
   });
 
   it('throws on an unknown backend id', () => {
-    expect(() => getBackend('llm:groq')).toThrow('unknown backend id: llm:groq');
+    expect(() => getBackend('llm:nonexistent-vendor')).toThrow('unknown backend id: llm:nonexistent-vendor');
   });
 });

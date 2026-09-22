@@ -4,26 +4,21 @@
 // Firefox/Safari (src/entrypoints/background.ts) -- never by the background
 // router on Chromium, which only relays (§3 architecture).
 
-import { assembleObservation } from '@/agent';
+import { assembleObservation, createAgentLoop } from '@/agent';
+import { configureBackendDeps, getBackend, getBackendSettings } from '@/backend';
 import { detectDevice } from '@/hw';
-import { createLogger, IdbSink } from '@/logging';
+import { createLogger, IdbSink, ReasonCodeError } from '@/logging';
 import type { LogRecord, RuntimeLogger, SessionRecord } from '@/logging';
 import { onComputeHostRequest } from '@/platform';
 import type { MessageMap, Platform } from '@/platform';
-import { sanitizeUnit, TokenMapImpl } from '@/sanitize';
+import { sanitizeUnit } from '@/sanitize';
 
-// §7.6: one token map per agent session, created lazily, living only in
-// compute-host memory. Session cleanup (tab close / session end) is an M6
-// concern -- no real agent sessions exist until then.
-const tokenMaps = new Map<string, TokenMapImpl>();
-function getTokenMap(sessionId: string): TokenMapImpl {
-  let map = tokenMaps.get(sessionId);
-  if (!map) {
-    map = new TokenMapImpl();
-    tokenMaps.set(sessionId, map);
-  }
-  return map;
-}
+// §13.2: one agent-loop instance for the lifetime of this compute host --
+// owns every session's token map, abort controller and history (§7.6).
+// sanitizeChunk also reads its per-session token map (Phase B tokenizes PII
+// before an agent-loop step ever runs), so it's the single owner of that
+// state rather than computeHost.ts keeping a second, separate map.
+const agentLoop = createAgentLoop();
 
 function createDispatch(logger: RuntimeLogger) {
   return async function dispatch(type: string, payload: unknown): Promise<unknown> {
@@ -39,7 +34,7 @@ function createDispatch(logger: RuntimeLogger) {
           'sanitize.regex',
           { session_id: req.session_id, counts: { units: req.units.length } },
           async () => {
-            const tokenMap = getTokenMap(req.session_id);
+            const tokenMap = agentLoop.getOrCreateTokenMap(req.session_id);
             const results = await Promise.all(
               req.units.map(async (unit) => ({
                 unit_id: unit.unit_id,
@@ -69,6 +64,31 @@ function createDispatch(logger: RuntimeLogger) {
         return result;
       }
 
+      // §13.2/§12: assemble -> backend.decide() -> §13.4 policy -> token
+      // resolution, one round trip per agent-loop step.
+      case 'agentDecide': {
+        const req = payload as MessageMap['request']['agentDecide']['request'];
+        const backend = getBackend(req.backend_id);
+        try {
+          await backend.init();
+        } catch (error) {
+          return { status: 'fail', reason: error instanceof ReasonCodeError ? error.reason : 'backend_error' };
+        }
+        return agentLoop.decideStep(req, backend, logger);
+      }
+
+      case 'agentReportResults': {
+        const req = payload as MessageMap['request']['agentReportResults']['request'];
+        agentLoop.recordStepResults(req.session_id, req.results);
+        return {};
+      }
+
+      case 'agentStop': {
+        const req = payload as MessageMap['request']['agentStop']['request'];
+        agentLoop.stopSession(req.session_id);
+        return {};
+      }
+
       case 'logRecord': {
         logger.record(payload as LogRecord);
         return {};
@@ -89,15 +109,19 @@ export async function bootstrapComputeHost(platform: Platform): Promise<void> {
   // before anything past this line would have run (§4.3.1).
   onComputeHostRequest(createDispatch(logger));
 
+  // getBackend('llm:*')'s factories (backends.config.ts) need these but
+  // can't receive them synchronously through getBackend(id) itself (§12.4).
+  configureBackendDeps({ settings: platform.settings, logger, assetUrl: platform.assetUrl });
+
   const device = await detectDevice(platform.name);
+  const backendSettings = await getBackendSettings(platform.settings);
 
   const session: SessionRecord = {
     session_id: crypto.randomUUID(),
     started_at: Date.now(),
     device,
-    // Backend/model registries don't exist until M6/M7 -- placeholders until then.
-    models: [],
-    backend_id: 'unassigned',
+    models: [], // model registry doesn't exist until M7
+    backend_id: backendSettings.selectedBackendId,
   };
   logger.recordSession(session);
   await logger.flush();

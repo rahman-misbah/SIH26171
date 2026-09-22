@@ -3,9 +3,72 @@
   <head>
     <meta charset="utf-8" />
     <title>Edward settings</title>
+    <style>
+      body {
+        font: 14px/1.5 -apple-system, system-ui, sans-serif;
+        max-width: 480px;
+        margin: 24px auto;
+        padding: 0 16px;
+      }
+      fieldset {
+        margin-bottom: 16px;
+      }
+      label {
+        display: block;
+        margin-top: 8px;
+        font-size: 12px;
+        color: #444;
+      }
+      input,
+      select {
+        width: 100%;
+        box-sizing: border-box;
+        font: inherit;
+        padding: 4px 6px;
+      }
+      button {
+        font: inherit;
+        padding: 6px 16px;
+        margin-top: 16px;
+      }
+      #status {
+        margin-top: 8px;
+        color: #555;
+      }
+    </style>
   </head>
   <body>
-    <div id="app">Settings</div>
+    <div id="app">
+      <h1>Edward settings</h1>
+
+      <label for="backend">Reasoning backend</label>
+      <select id="backend">
+        <option value="mock">Mock (no network, records observations)</option>
+        <option value="llm:groq">Groq</option>
+        <option value="llm:openai-compatible">Self-hosted / OpenAI-compatible</option>
+      </select>
+
+      <fieldset id="groq-fields">
+        <legend>Groq</legend>
+        <label for="groq-key">API key</label>
+        <input id="groq-key" type="password" autocomplete="off" />
+        <label for="groq-model">Model (optional override)</label>
+        <input id="groq-model" type="text" placeholder="qwen/qwen3.8-27b" />
+      </fieldset>
+
+      <fieldset id="oac-fields">
+        <legend>Self-hosted / OpenAI-compatible</legend>
+        <label for="oac-base-url">Base URL</label>
+        <input id="oac-base-url" type="text" placeholder="https://your-server/v1" />
+        <label for="oac-key">API key</label>
+        <input id="oac-key" type="password" autocomplete="off" />
+        <label for="oac-model">Model</label>
+        <input id="oac-model" type="text" />
+      </fieldset>
+
+      <button id="save" type="button">Save</button>
+      <div id="status"></div>
+    </div>
     <script type="module" src="./main.ts"></script>
   </body>
 </html>

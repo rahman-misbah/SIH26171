@@ -10,13 +10,26 @@ import { runPhaseA } from './skeleton';
 import type { AssembleResult } from '@/agent/assemble';
 import type { LogRecord } from '@/logging/schema';
 import type { Transport } from '@/platform/types';
-import type { ContentField, ContentUnit } from './types';
+import type { ElementRegistry } from './registry';
+import type { ContentField, ContentUnit, SkeletonNode } from './types';
 
 export interface ObserveOptions {
   session_id: string;
   step: number;
   task: string;
   origin: string;
+}
+
+// The shared piece of a step: Phase A -> Phase B -> chunked sanitize. Used by
+// both observePage() (M5's observe-only path) and src/dom/agentSession.ts
+// (M6's real agent-loop steps, which additionally needs `registry` kept
+// alive afterward to execute whatever actions the step's decision returns).
+export interface StepObservation {
+  registry: ElementRegistry;
+  skeleton: SkeletonNode[];
+  page: { url: string; title: string; viewport: { w: number; h: number }; scroll: { x: number; y: number } };
+  task: string; // sanitized
+  contentResults: { node_id: string; field: ContentField; text: string }[];
 }
 
 const CHUNK_SIZE = 200;
@@ -40,7 +53,7 @@ const TASK_UNIT_ID = '__task__';
 const URL_UNIT_ID = '__url__';
 const TITLE_UNIT_ID = '__title__';
 
-export async function observePage(transport: Transport, doc: Document, options: ObserveOptions): Promise<AssembleResult> {
+export async function buildStepObservation(transport: Transport, doc: Document, options: ObserveOptions): Promise<StepObservation> {
   const { session_id, step, task, origin } = options;
 
   const phaseAStart = performance.timeOrigin + performance.now();
@@ -92,17 +105,29 @@ export async function observePage(transport: Transport, doc: Document, options: 
     text: sanitizedById.get(unit.unit_id) ?? '',
   }));
 
-  return transport.request('assembleObservation', {
-    session_id,
-    step,
-    task: sanitizedById.get(TASK_UNIT_ID) ?? '',
+  return {
+    registry,
+    skeleton,
     page: {
       url: sanitizedById.get(URL_UNIT_ID) ?? '',
       title: sanitizedById.get(TITLE_UNIT_ID) ?? '',
       viewport: { w: doc.defaultView?.innerWidth ?? 0, h: doc.defaultView?.innerHeight ?? 0 },
       scroll: { x: doc.defaultView?.scrollX ?? 0, y: doc.defaultView?.scrollY ?? 0 },
     },
-    skeleton,
+    task: sanitizedById.get(TASK_UNIT_ID) ?? '',
     contentResults,
+  };
+}
+
+export async function observePage(transport: Transport, doc: Document, options: ObserveOptions): Promise<AssembleResult> {
+  const { session_id, step } = options;
+  const built = await buildStepObservation(transport, doc, options);
+  return transport.request('assembleObservation', {
+    session_id,
+    step,
+    task: built.task,
+    page: built.page,
+    skeleton: built.skeleton,
+    contentResults: built.contentResults,
   });
 }
