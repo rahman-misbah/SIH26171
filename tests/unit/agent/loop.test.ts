@@ -58,6 +58,7 @@ function baseInput(overrides: Partial<DecideStepInput> = {}): DecideStepInput {
     session_id: 's1',
     step: 1,
     task: 'do the thing',
+    images: [],
     page: { url: 'https://example.com/', title: 'Example', viewport: { w: 100, h: 100 }, scroll: { x: 0, y: 0 } },
     skeleton: [secretNode, clickTarget],
     contentResults: [],

@@ -24,6 +24,7 @@ import { browser } from 'wxt/browser';
 import { isTabPushMessage } from './messages';
 import type { MessageMap, TabPushMessage } from './messages';
 import type { KeyValueStore, Platform, Port, TabRef } from './types';
+import { decodeBinary, encodeBinary } from './binaryCodec';
 
 type EdwardMessage =
   | { __edward: 'request'; type: string; payload: unknown }
@@ -37,45 +38,6 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function isEdwardMessage(value: unknown): value is EdwardMessage {
   return isRecord(value) && typeof value.__edward === 'string';
-}
-
-// §4.3.7: Chromium extension messaging is JSON-serialized (no ArrayBuffer),
-// while Firefox/Safari use structured clone. Consumers always send/receive
-// ArrayBuffer, so this walks the payload and swaps ArrayBuffer <-> base64
-// around the wire on Chromium only.
-const ARRAY_BUFFER_MARKER = '__edwardArrayBuffer';
-
-function arrayBufferToBase64(buffer: ArrayBuffer): string {
-  const bytes = new Uint8Array(buffer);
-  let binary = '';
-  const chunkSize = 0x8000; // avoid a call-stack blowout from String.fromCharCode(...bytes) on large buffers
-  for (let i = 0; i < bytes.length; i += chunkSize) {
-    binary += String.fromCharCode(...bytes.subarray(i, i + chunkSize));
-  }
-  return btoa(binary);
-}
-
-function base64ToArrayBuffer(base64: string): ArrayBuffer {
-  const binary = atob(base64);
-  const bytes = new Uint8Array(binary.length);
-  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-  return bytes.buffer;
-}
-
-function encodeBinary(value: unknown): unknown {
-  if (value instanceof ArrayBuffer) return { [ARRAY_BUFFER_MARKER]: arrayBufferToBase64(value) };
-  if (Array.isArray(value)) return value.map(encodeBinary);
-  if (isRecord(value)) return Object.fromEntries(Object.entries(value).map(([k, v]) => [k, encodeBinary(v)]));
-  return value;
-}
-
-function decodeBinary(value: unknown): unknown {
-  if (isRecord(value) && typeof value[ARRAY_BUFFER_MARKER] === 'string') {
-    return base64ToArrayBuffer(value[ARRAY_BUFFER_MARKER]);
-  }
-  if (Array.isArray(value)) return value.map(decodeBinary);
-  if (isRecord(value)) return Object.fromEntries(Object.entries(value).map(([k, v]) => [k, decodeBinary(v)]));
-  return value;
 }
 
 // Whether this context can call `tabs` APIs directly — true in the

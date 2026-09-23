@@ -6,6 +6,7 @@
 import { ReasonCodeError } from '@/logging';
 import type { Box } from '@/models/capabilities';
 import { fitWithin, MAX_OUTPUT_SIDE } from './downscale';
+import type { FitStep } from './fitBytes';
 import { sha256Hex } from './imgId';
 import { redactBoxes } from './redact';
 
@@ -50,4 +51,19 @@ export async function redactAndEncode(image: ImageBitmap, boxes: Box[]): Promise
   const out = new OffscreenCanvas(size.w, size.h);
   context2d(out).drawImage(full, 0, 0, size.w, size.h);
   return { blob: await out.convertToBlob({ type: 'image/jpeg', quality: JPEG_QUALITY }), painted };
+}
+
+// §14.3: one step of the fit-to-maxImageBytes loop (fitBytes.ts). Input is
+// the already-redacted JPEG, never raw pixels.
+export async function reencodeJpeg(redacted: Blob, step: FitStep): Promise<Blob> {
+  const image = await createImageBitmap(redacted);
+  try {
+    const w = Math.max(1, Math.round(image.width * step.scale));
+    const h = Math.max(1, Math.round(image.height * step.scale));
+    const out = new OffscreenCanvas(w, h);
+    context2d(out).drawImage(image, 0, 0, w, h);
+    return await out.convertToBlob({ type: 'image/jpeg', quality: step.quality });
+  } finally {
+    image.close();
+  }
 }

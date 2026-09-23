@@ -1,16 +1,21 @@
 // M8 done-when (§6.1-§6.3, §6.6): face fixtures are redacted, unreadable
 // images are withheld with a marker, a second observation hits the cache,
-// and the image cache holds no raw bytes. Driven by the same
+// and the image cache holds no raw bytes. M9: images are now sent -- the
+// face test checks the outgoing (and cached) redacted images themselves,
+// §14.3 selection is checked on images.html, and the fetch fallback's
+// private-host refusal on images-unreadable.html. Driven by the same
 // __EDWARD_E2E__ observe-on-load hook as canary.spec.ts; the compute host's
 // IndexedDB (logs + image cache) is read from an extension page, which
 // shares the extension origin with the offscreen document.
 
+import { createHash } from 'node:crypto';
 import path from 'node:path';
 import type { BrowserContext, Page } from '@playwright/test';
 import type { AssembleResult } from '../../src/agent/assemble';
 import { computeImgId } from '../../src/image/imgId';
 import type { LogRecord } from '../../src/logging/schema';
-import { expect, test } from './fixtures';
+import { E2E_PUBLIC_HOST, expect, test } from './fixtures';
+import { imageBytes, type ObservedImage } from './imageForensics';
 import { startStaticServer } from './staticServer';
 
 const FIXTURES_ROOT = path.resolve(import.meta.dirname, '../fixtures');
@@ -56,6 +61,7 @@ interface CacheInspection {
   redaction_counts: { faces: number; text: number; codes: number };
   // Every field whose value is binary (Blob/ArrayBuffer/typed array).
   binaryFields: string[];
+  redacted_sha256?: string; // sha-256 of the stored redacted_image's bytes
 }
 
 // Opens the image cache the same way src/image/cache.ts does, and inspects
@@ -78,16 +84,39 @@ function inspectImageCache(page: Page): Promise<CacheInspection[]> {
           .filter(([, v]) => v instanceof Blob || v instanceof ArrayBuffer || ArrayBuffer.isView(v))
           .map(([k]) => k);
 
+        const blob = record.redacted_image;
+        const redacted_sha256 =
+          blob instanceof Blob
+            ? Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', await blob.arrayBuffer())), (b) => b.toString(16).padStart(2, '0')).join('')
+            : undefined;
         return {
           keys: Object.keys(record).filter((k) => record[k] !== undefined),
           img_id: record.img_id as string,
           raw_sha256: record.raw_sha256,
           redaction_counts: record.redaction_counts as CacheInspection['redaction_counts'],
           binaryFields,
+          redacted_sha256,
         };
       }),
     );
   });
+}
+
+// Fraction of an image's pixels that are (near-)pure black -- what the
+// solid-fill redactor paints (src/image/redact.ts). Decoded in a page, since
+// Node has no image decoder.
+function darkFraction(page: Page, dataUrl: string): Promise<number> {
+  return page.evaluate(async (url) => {
+    const bitmap = await createImageBitmap(await (await fetch(url)).blob());
+    const canvas = new OffscreenCanvas(bitmap.width, bitmap.height);
+    const ctx = canvas.getContext('2d');
+    if (!ctx) throw new Error('no 2d context');
+    ctx.drawImage(bitmap, 0, 0);
+    const { data } = ctx.getImageData(0, 0, bitmap.width, bitmap.height);
+    let dark = 0;
+    for (let i = 0; i < data.length; i += 4) if (data[i]! < 16 && data[i + 1]! < 16 && data[i + 2]! < 16) dark++;
+    return dark / (data.length / 4);
+  }, dataUrl);
 }
 
 function imageNode(result: AssembleResult, predicate: (n: { tag: string; image?: string }) => boolean) {
@@ -95,7 +124,7 @@ function imageNode(result: AssembleResult, predicate: (n: { tag: string; image?:
   return result.observation.dom.filter((n) => n.image !== undefined && predicate(n));
 }
 
-test('face fixtures are redacted and cached; a second observation hits the cache; no raw bytes are stored', async ({
+test('face fixtures are redacted, sent and cached; a second observation hits the cache; no raw bytes are stored', async ({
   context,
   extensionId,
 }) => {
@@ -103,19 +132,43 @@ test('face fixtures are redacted and cached; a second observation hits the cache
   const server = await startStaticServer(FIXTURES_ROOT);
   try {
     const page = await context.newPage();
-    const first = await observe(page, `${server.url}pages/images.html`);
+    const first = await observe(page, `${server.url}pages/faces.html`);
     expect(first.status).toBe('ok');
     if (first.status !== 'ok') throw new Error('blocked');
 
-    // M8 plan decision: nothing is sent until OCR/QR exist (M9) -- every
-    // processed image is withheld with a marker, never silently dropped.
+    // M9: all four faces pass face + OCR + QR and are sent (4 = the mock
+    // backend's request limit).
     const images = imageNode(first, () => true);
-    expect(images).toHaveLength(6);
-    expect(images.every((n) => n.image_omitted === 'detector_failed')).toBe(true);
-    expect(first.observation.images).toEqual([]);
+    expect(images.map((n) => n.image_omitted)).toEqual([undefined, undefined, undefined, undefined]);
+    const sent = first.observation.images as unknown as ObservedImage[];
+    expect(sent).toHaveLength(4);
 
-    const second = await observe(page, `${server.url}pages/images.html`);
+    // Each outgoing image carries a painted box: clearly more solid black
+    // than its original. (The originals contain almost none; a face box
+    // covers a large share of these close-up portraits.)
+    const FACES: [string, number][] = [
+      ['face-1.png', 200],
+      ['face-2.png', 200],
+      ['face-3.png', 330],
+      ['face-4.png', 330],
+    ];
+    const faceIds = await Promise.all(FACES.map(([f, side]) => computeImgId(`${server.url}assets/${f}`, side, side)));
+    const darkness: Record<string, [number, number]> = {};
+    for (const [i, [file]] of FACES.entries()) {
+      const out = sent.find((img) => img.img_id === faceIds[i]);
+      expect(out, `${file} was sent`).toBeDefined();
+      const before = await darkFraction(page, `${server.url}assets/${file}`);
+      const after = await darkFraction(page, `data:image/jpeg;base64,${out!.data.base64}`);
+      darkness[file] = [Math.round(before * 100) / 100, Math.round(after * 100) / 100];
+      expect(after - before, `${file}: painted area`).toBeGreaterThan(0.05);
+    }
+    test.info().annotations.push({ type: 'measurement', description: `dark-pixel fraction before/after redaction: ${JSON.stringify(darkness)}` });
+
+    const second = await observe(page, `${server.url}pages/faces.html`);
     expect(second.status).toBe('ok');
+    if (second.status !== 'ok') throw new Error('blocked');
+    // Answered from the cache, and sent again from the cached redacted image.
+    expect(second.observation.images).toHaveLength(4);
     await page.close();
 
     await new Promise((resolve) => setTimeout(resolve, LOG_FLUSH_WAIT_MS));
@@ -130,41 +183,21 @@ test('face fixtures are redacted and cached; a second observation hits the cache
       description: `image.face per fixture: ${JSON.stringify(faceRecords.map((r) => ({ ref: r.ref, faces: r.counts?.faces, ms: Math.round(r.duration_ms) })))}`,
     });
 
-    // Natural sizes: the cartoon faces are 200x200, the synthetic photo faces 330x330.
-    const FACES: [string, number][] = [
-      ['face-1.png', 200],
-      ['face-2.png', 200],
-      ['face-3.png', 330],
-      ['face-4.png', 330],
-    ];
-    const faceIds = await Promise.all(FACES.map(([f, side]) => computeImgId(`${server.url}assets/${f}`, side, side)));
-
-    // Faces found, and a solid-fill box painted over each, per face fixture.
-    // (The painted output itself isn't observable here: M8 never sends or
-    // persists a withheld image's pixels. Its correctness is unit-tested in
-    // tests/unit/image/redact.test.ts and was inspected by eye during M8 --
-    // see the M8 Log.)
     for (const img_id of faceIds) {
       const detection = records.find((r) => r.op === 'image.face' && r.ref === img_id);
       expect(detection?.outcome, `image.face for ${img_id}`).toBe('ok');
       expect(detection?.counts?.faces, `faces found in ${img_id}`).toBeGreaterThanOrEqual(1);
-
-      const redaction = records.find((r) => r.op === 'image.redact' && r.ref === img_id);
-      expect(redaction?.outcome, `image.redact for ${img_id}`).toBe('ok');
-      expect(redaction?.counts?.faces, `boxes painted in ${img_id}`).toBeGreaterThanOrEqual(1);
-
+      for (const op of ['image.ocr', 'image.qr', 'image.redact'] as const) {
+        expect(records.find((r) => r.op === op && r.ref === img_id)?.outcome, `${op} for ${img_id}`).toBe('ok');
+      }
       expect(cache.find((c) => c.img_id === img_id)?.redaction_counts.faces).toBeGreaterThanOrEqual(1);
-    }
-
-    // Second observation: answered from the cache, logged as hits.
-    for (const img_id of faceIds) {
       expect(records.some((r) => r.op === 'image.cache_hit' && r.ref === img_id), `cache hit for ${img_id}`).toBe(true);
     }
 
     // §6.6: no raw bytes. Every record's fields are §6.6's record (+ the
-    // documented bookkeeping fields), and -- since every M8 image is withheld
-    // pending OCR/QR -- no record holds any pixels at all, not even redacted
-    // ones (a face-redacted image may still show text PII).
+    // documented bookkeeping fields); the only binary field is
+    // redacted_image, and its bytes are exactly the redacted image that was
+    // sent -- not the original.
     const allowed = new Set([
       'key',
       'img_id',
@@ -178,13 +211,60 @@ test('face fixtures are redacted and cached; a second observation hits the cache
       'created_at',
       'validated_at',
     ]);
-    expect(cache.length).toBeGreaterThanOrEqual(6);
+    const sentHashes = new Set(sent.map((img) => createHash('sha256').update(imageBytes(img)).digest('hex')));
+    for (const img_id of faceIds) {
+      const record = cache.find((c) => c.img_id === img_id && c.redacted_sha256 !== undefined);
+      expect(record, `cache record for ${img_id}`).toBeDefined();
+      expect(record!.keys.every((k) => allowed.has(k)), `fields: ${record!.keys.join(',')}`).toBe(true);
+      expect(record!.binaryFields).toEqual(['redacted_image']);
+      expect(record!.raw_sha256).toMatch(/^[0-9a-f]{64}$/);
+      expect(sentHashes.has(record!.redacted_sha256!), `${img_id}: cached bytes are the redacted output`).toBe(true);
+    }
     for (const record of cache) {
       expect(record.keys.every((k) => allowed.has(k)), `fields: ${record.keys.join(',')}`).toBe(true);
-      expect(record.binaryFields).toEqual([]);
-      expect(record.raw_sha256).toMatch(/^[0-9a-f]{64}$/);
+      expect(record.binaryFields.every((f) => f === 'redacted_image')).toBe(true);
     }
+  } finally {
+    await server.close();
+  }
+});
 
+// §14.3: more images than the backend takes. The mock backend's
+// maxImagesPerRequest is 4; images.html has 7. Exactly 4 are sent, in
+// priority order (in-viewport, then larger area), and the other 3 carry a
+// request_limit marker -- most of them never processed at all (§6.7 send
+// budget), so the observation doesn't wait on them.
+test('selection: only maxImagesPerRequest images are sent, the rest are marked request_limit', async ({ context, extensionId }) => {
+  test.setTimeout(90_000);
+  const server = await startStaticServer(FIXTURES_ROOT);
+  try {
+    const page = await context.newPage();
+    const result = await observe(page, `${server.url}pages/images.html`);
+    await page.close();
+    expect(result.status).toBe('ok');
+    if (result.status !== 'ok') throw new Error('blocked');
+
+    const nodes = imageNode(result, () => true);
+    expect(nodes).toHaveLength(7);
+    const sent = result.observation.images as unknown as ObservedImage[];
+    expect(sent).toHaveLength(4);
+    const sentNodes = new Set(sent.map((i) => i.node_id));
+    for (const node of nodes) {
+      expect(node.image_omitted, `node ${node.node_id}`).toBe(sentNodes.has(node.node_id) ? undefined : 'request_limit');
+    }
+    // Largest first among in-viewport images: the QR (300x300) leads.
+    const bySize = [...nodes].filter((n) => n.in_viewport).sort((a, b) => b.bbox.w * b.bbox.h - a.bbox.w * a.bbox.h);
+    expect(sentNodes.has(bySize[0]!.node_id)).toBe(true);
+
+    await new Promise((resolve) => setTimeout(resolve, LOG_FLUSH_WAIT_MS));
+    const ext = await extensionPage(context, extensionId);
+    const records = await readLogRecords(ext);
+    await ext.close();
+    const session = records.filter((r) => r.session_id === result.observation.session_id);
+    const redacted = new Set(session.filter((r) => r.op === 'image.redact').map((r) => r.ref));
+    test.info().annotations.push({ type: 'measurement', description: `images.html: 7 images, 4 sent, ${redacted.size} processed` });
+    // The budget stops processing early: fewer than all 7 were processed.
+    expect(redacted.size).toBeLessThan(7);
   } finally {
     await server.close();
   }
@@ -201,10 +281,17 @@ test('unreadable and too-small images are withheld with a marker; tainted images
   // compute host fetches it itself (§6.2.2). On Chromium that fetch succeeds
   // without any extra permission request: the content script's <all_urls>
   // match pattern already grants the extension host access (found in M8).
+  // M9: served under a public-looking name (host-resolver rule in
+  // fixtures.ts) -- the fetch fallback refuses 127.0.0.1 itself, which the
+  // `xp` image checks.
   const crossOrigin = await startStaticServer(FIXTURES_ROOT);
+  const publicXo = crossOrigin.url.replace('127.0.0.1', E2E_PUBLIC_HOST);
   try {
     const page = await context.newPage();
-    const result = await observe(page, `${server.url}pages/images-unreadable.html?xo=${encodeURIComponent(crossOrigin.url)}`);
+    const result = await observe(
+      page,
+      `${server.url}pages/images-unreadable.html?xo=${encodeURIComponent(publicXo)}&xp=${encodeURIComponent(crossOrigin.url)}`,
+    );
     expect(result.status).toBe('ok');
     if (result.status !== 'ok') throw new Error('blocked');
 
@@ -214,13 +301,15 @@ test('unreadable and too-small images are withheld with a marker; tainted images
     expect(Object.fromEntries(byName)).toEqual({
       'missing image': 'unreadable', // 404: no pixels via canvas or fetch (§6.2.3)
       'not an image': 'unreadable', // fetched fine, but doesn't decode (§6.2.3)
-      // Acquired through the host fetch fallback and face-processed, then
-      // withheld by the M8 send gate (OCR/QR arrive in M9).
-      'cross-origin image': 'detector_failed',
+      // Acquired through the host fetch fallback, processed and sent.
+      'cross-origin image': undefined,
+      // M9: the fetch fallback refuses a private host (privateHost.ts).
+      'private-host image': 'unreadable',
       'tiny image': 'too_small', // §6.1 size floor
       'no source': 'unreadable',
     });
-    expect(result.observation.images).toEqual([]);
+    const xoSent = result.observation.dom.find((n) => n.content.accessible_name === 'cross-origin image');
+    expect(result.observation.images.map((i) => i.node_id)).toEqual([xoSent?.node_id]);
     await page.close();
 
     // The cross-origin image really did take the fallback path: the content
@@ -234,6 +323,15 @@ test('unreadable and too-small images are withheld with a marker; tainted images
     expect(acquires.map((r) => [r.outcome, r.reason ?? null])).toEqual([
       ['fail', 'cors_blocked'],
       ['ok', null],
+    ]);
+
+    // The private-host image: canvas tainted, fetch refused before any
+    // request was made, logged with its own reason.
+    const xpNode = result.observation.dom.find((n) => n.content.accessible_name === 'private-host image');
+    const xpAcquires = records.filter((r) => r.op === 'image.acquire' && r.ref === xpNode?.node_id && r.session_id === result.observation.session_id);
+    expect(xpAcquires.map((r) => [r.outcome, r.reason ?? null])).toEqual([
+      ['fail', 'cors_blocked'],
+      ['fail', 'private_host'],
     ]);
 
     // §6.1 size floor: the tiny image is logged as a skipped acquisition.

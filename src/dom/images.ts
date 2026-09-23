@@ -1,9 +1,11 @@
 // §6 (content-script half): image candidates -> one imageLookup -> for each
 // image the cache couldn't answer, a canvas read (§6.2.1) + imageProcess,
-// in §6.7 priority order. Every image that won't be sent gets its
-// `image_omitted` reason written onto its skeleton node (§2.10), so the
-// assembler never has to know how that was decided.
+// in §6.7 priority order, stopping once the backend's image budget is met
+// (M9). Every image that won't be sent gets its `image_omitted` reason
+// written onto its skeleton node (§2.10), so the assembler never has to know
+// how that was decided.
 
+import { runWithBudget } from './budgetQueue';
 import { collectImageCandidates, type ImageCandidate } from './imageCandidates';
 import { loadBackgroundImage, readPixels } from './readPixels';
 import type { ElementRegistry } from './registry';
@@ -44,22 +46,11 @@ async function resolve(candidate: ImageCandidate): Promise<Resolved> {
   };
 }
 
-// Runs `fn` over `items` with at most `limit` in flight, starting them in
-// array order (which is the §6.7 priority order).
-async function forEachLimited<T>(items: T[], limit: number, fn: (item: T) => Promise<void>): Promise<void> {
-  let next = 0;
-  async function lane(): Promise<void> {
-    while (next < items.length) {
-      const item = items[next++]!;
-      await fn(item);
-    }
-  }
-  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, lane));
-}
-
 export interface ImageStepOptions {
   session_id: string;
   step: number;
+  origin: string; // OCR PII is tokenized under it (§6.5, §7.6)
+  backend_id: string; // whose maxImagesPerRequest is the send budget (§14.3)
   report: (record: LogRecord) => void;
 }
 
@@ -70,7 +61,7 @@ export async function acquirePageImages(
   registry: ElementRegistry,
   options: ImageStepOptions,
 ): Promise<void> {
-  const { session_id, step, report } = options;
+  const { session_id, step, origin, backend_id, report } = options;
   const byId = new Map(skeleton.map((node) => [node.node_id, node]));
 
   function mark(node_id: string, outcome: ImageOutcome): void {
@@ -93,8 +84,14 @@ export async function acquirePageImages(
   const resolved = await Promise.all(candidates.map(resolve));
 
   let lookups;
+  let sendBudget: number;
   try {
-    ({ results: lookups } = await transport.request('imageLookup', { session_id, images: resolved.map((r) => r.ref) }));
+    ({ results: lookups, send_budget: sendBudget } = await transport.request('imageLookup', {
+      session_id,
+      origin,
+      backend_id,
+      images: resolved.map((r) => r.ref),
+    }));
   } catch {
     // Fail closed: nothing about these images could be checked.
     for (const r of resolved) mark(r.ref.node_id, 'unreadable');
@@ -102,13 +99,19 @@ export async function acquirePageImages(
   }
 
   const needPixels = new Set<string>();
+  let readyFromCache = 0;
   for (const result of lookups) {
-    if (result.status === 'done') mark(result.node_id, result.outcome);
-    else needPixels.add(result.node_id);
+    if (result.status === 'done') {
+      mark(result.node_id, result.outcome);
+      if (result.outcome === 'ok') readyFromCache++;
+    } else needPixels.add(result.node_id);
   }
 
+  // Cache hits count against the budget first; if more are ready than the
+  // backend takes, §14.3 selection marks the surplus at assembly.
   const toProcess = resolved.filter((r) => needPixels.has(r.ref.node_id));
-  await forEachLimited(toProcess, DISPATCH_CONCURRENCY, async ({ img, ref }) => {
+  const budget = Math.max(0, sendBudget - readyFromCache);
+  const skipped = await runWithBudget(toProcess, { limit: DISPATCH_CONCURRENCY, budget }, async ({ img, ref }) => {
     const t_start = performance.timeOrigin + performance.now();
     const read = img ? await readPixels(img) : ({ ok: false, reason: 'unreadable' } as const);
     const t_end = performance.timeOrigin + performance.now();
@@ -126,10 +129,14 @@ export async function acquirePageImages(
     });
 
     try {
-      const result = await transport.request('imageProcess', { session_id, image: ref, pixels: read.ok ? read.png : undefined });
+      const result = await transport.request('imageProcess', { session_id, origin, image: ref, pixels: read.ok ? read.png : undefined });
       mark(ref.node_id, result.outcome);
+      return result.outcome === 'ok';
     } catch {
       mark(ref.node_id, 'unreadable');
+      return false;
     }
   });
+  // Never processed: the backend wouldn't take them this step (§14.3).
+  for (const { ref } of skipped) mark(ref.node_id, 'request_limit');
 }

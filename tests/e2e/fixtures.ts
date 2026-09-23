@@ -7,6 +7,8 @@ import { chromium, test as base, type BrowserContext } from '@playwright/test';
 // for M1, not a workaround we invented.
 const EXTENSION_PATH = path.resolve(import.meta.dirname, '../../.output/chrome-mv3');
 
+export const E2E_PUBLIC_HOST = 'xo.edward.test';
+
 export const test = base.extend<{
   context: BrowserContext;
   extensionId: string;
@@ -18,6 +20,11 @@ export const test = base.extend<{
       args: [
         `--disable-extensions-except=${EXTENSION_PATH}`,
         `--load-extension=${EXTENSION_PATH}`,
+        // M9: the image fetch fallback refuses private hosts (127.0.0.1
+        // included), so images.spec.ts reaches its second local server
+        // through a public-looking name instead. `.test` is reserved (RFC
+        // 2606) and never resolves on the real internet.
+        `--host-resolver-rules=MAP ${E2E_PUBLIC_HOST} 127.0.0.1`,
       ],
     });
     await use(context);

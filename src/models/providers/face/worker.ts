@@ -38,7 +38,7 @@ type Face = { box: { x: number; y: number; w: number; h: number }; confidence: '
 type OutMessage =
   | { type: 'ready' }
   | { type: 'init-error'; message: string }
-  | { type: 'detect-result'; id: number; faces: Face[] }
+  | { type: 'detect-result'; id: number; result: Face[] }
   | { type: 'detect-error'; id: number; message: string };
 
 function post(msg: OutMessage): void {
@@ -93,7 +93,7 @@ self.onmessage = async (event: MessageEvent<InMessage>) => {
         confidence: bucketFaceScore(detection.categories[0]?.score ?? 0),
       });
     }
-    post({ type: 'detect-result', id: msg.id, faces });
+    post({ type: 'detect-result', id: msg.id, result: faces });
   } catch (error) {
     post({ type: 'detect-error', id: msg.id, message: error instanceof Error ? error.message : String(error) });
   } finally {

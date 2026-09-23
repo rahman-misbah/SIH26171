@@ -6,6 +6,7 @@
 // `unreadable` (fail-closed). Also the §6.6 conditional revalidation request.
 
 import { ReasonCodeError } from '@/logging';
+import { isPrivateHostUrl } from './privateHost';
 
 export type FetchResult =
   | { notModified: true }
@@ -29,6 +30,9 @@ export async function fetchImage(src: string, validators?: Validators): Promise<
     throw new ReasonCodeError('unreadable');
   }
   if (!FETCHABLE.has(url.protocol)) throw new ReasonCodeError('unreadable');
+  // M9: never fetch a page-supplied URL on a private/intranet host (see
+  // privateHost.ts). The image is withheld as `unreadable`; the log shows why.
+  if (isPrivateHostUrl(url.href)) throw new ReasonCodeError('private_host');
 
   const headers: Record<string, string> = {};
   if (validators?.etag) headers['If-None-Match'] = validators.etag;

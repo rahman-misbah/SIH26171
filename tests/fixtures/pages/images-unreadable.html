@@ -5,6 +5,10 @@
      tests/e2e/images.spec.ts can point it at a second local server (another
      port = another origin) that sends no CORS headers: its canvas read is
      tainted, so the compute host's fetch fallback (§6.2.2) has to take over.
+     M9: `xp` points a second cross-origin image at a private host
+     (127.0.0.1), which the fallback must refuse (privateHost.ts); `xo` is
+     then given a public-looking name mapped to 127.0.0.1 by the e2e
+     browser's host-resolver rules.
      Broken images get explicit CSS sizes because Chromium lays a broken
      <img> with alt text out as inline alt text, ignoring width/height.
      No canaries here: this page is about markers, not redaction. -->
@@ -17,11 +21,14 @@
     <img src="../assets/does-not-exist.png" alt="missing image" style="display: inline-block; width: 100px; height: 100px" />
     <img src="images.html" alt="not an image" style="display: inline-block; width: 100px; height: 100px" />
     <img id="xo" alt="cross-origin image" width="100" height="100" />
+    <img id="xp" alt="private-host image" width="100" height="100" />
     <img src="../assets/face-1.png" alt="tiny image" width="16" height="16" />
     <img alt="no source" width="100" height="100" style="display: inline-block" />
     <script>
       const xo = new URLSearchParams(location.search).get('xo');
       if (xo) document.getElementById('xo').src = new URL('assets/face-1.png', xo).href;
+      const xp = new URLSearchParams(location.search).get('xp');
+      if (xp) document.getElementById('xp').src = new URL('assets/face-2.png', xp).href;
     </script>
   </body>
 </html>

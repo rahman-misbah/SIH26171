@@ -1,0 +1,18 @@
+<!doctype html>
+<!-- M9 (§6.4.2-4, §18.1): the text and code images only -- rendered PII
+     text, PII mixed with plainly non-PII text, and a QR code that decodes to
+     a canary. Three images fit the mock backend's 4-image request limit, so
+     all of them are sent, and the e2e canary test re-OCRs and re-decodes
+     what actually left the device. Text images are rendered by
+     tests/fixtures/renderTextFixtures.ts; all values are synthetic. -->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Text images — canary fixture</title>
+  </head>
+  <body>
+    <img src="../assets/rendered-text.png" alt="" data-canary="rendered-text" width="560" height="120" />
+    <img src="../assets/ocr-mixed.png" alt="" data-canary="ocr-mixed" width="520" height="200" />
+    <img src="../assets/qr-1.png" alt="" data-canary="qr-1" width="300" height="300" />
+  </body>
+</html>

@@ -36,9 +36,14 @@ export default defineContentScript({
         step: 0,
         task: 'fixture walkthrough (no canaries in the task string itself)',
         origin: location.origin,
+        backend_id: 'mock',
       })
         .then((result) => {
-          document.documentElement.dataset.edwardObservation = JSON.stringify(result);
+          // Image bytes (ObservationImage.data, a Uint8Array) as base64, so
+          // the e2e suite can decode and re-OCR the outgoing images (§18.1).
+          document.documentElement.dataset.edwardObservation = JSON.stringify(result, (_key, value: unknown) =>
+            value instanceof Uint8Array ? { base64: btoa(Array.from(value, (b) => String.fromCharCode(b)).join('')) } : value,
+          );
         })
         .catch((error: unknown) => {
           document.documentElement.dataset.edwardObservation = JSON.stringify({

@@ -4,16 +4,17 @@
 // Firefox/Safari (src/entrypoints/background.ts) -- never by the background
 // router on Chromium, which only relays (§3 architecture).
 
-import { assembleObservation, createAgentLoop } from '@/agent';
+import { assembleObservation, createAgentLoop, prepareObservationImages } from '@/agent';
 import { configureBackendDeps, getBackend, getBackendSettings } from '@/backend';
 import { detectDevice } from '@/hw';
-import { createImagePipeline, decodeImage, fetchImage, hashPixels, IdbImageCache, redactAndEncode } from '@/image';
+import { createImagePipeline, decodeImage, fetchImage, hashPixels, IdbImageCache, redactAndEncode, reencodeJpeg, SendableImageStore } from '@/image';
 import type { ImagePipeline } from '@/image';
 import { createLogger, IdbSink, ReasonCodeError } from '@/logging';
 import type { LogRecord, RuntimeLogger, SessionRecord } from '@/logging';
 import { configureModelDeps, getActiveModelId, getModel } from '@/models';
 import { onComputeHostRequest } from '@/platform';
 import type { MessageMap, Platform } from '@/platform';
+import type { SkeletonNode } from '@/dom/types';
 import { sanitizeUnit } from '@/sanitize';
 
 // §13.2: one agent-loop instance for the lifetime of this compute host --
@@ -23,24 +24,39 @@ import { sanitizeUnit } from '@/sanitize';
 // state rather than computeHost.ts keeping a second, separate map.
 const agentLoop = createAgentLoop();
 
-// §6: one image pipeline per compute host, sharing the one IndexedDB cache.
+// §6: one image pipeline per compute host, sharing the one IndexedDB cache
+// and the per-session store of this step's sendable images (§14.3).
+const sendableImages = new SendableImageStore();
+
 function createHostImagePipeline(logger: RuntimeLogger): ImagePipeline {
   return createImagePipeline({
     cache: new IdbImageCache(),
+    sendable: sendableImages,
     logger,
     now: () => Date.now(),
     faceDetector: () => getModel('face'),
-    // §6.6: changes whenever the active face provider changes. M9 extends
-    // this with the OCR/QR provider ids as those stages land.
+    ocrEngine: () => getModel('ocr'),
+    qrDetector: () => getModel('qr'),
+    ner: () => getModel('ner'),
+    // §6.5: OCR PII goes into the same per-session token map as DOM text.
+    tokenMap: (session_id) => agentLoop.getOrCreateTokenMap(session_id),
+    // §6.6: changes whenever any active detector changes, so a record made
+    // by an older or weaker detector set (including M8's face-only one) is
+    // a miss. Undefined while any stage runs on its fail-closed fallback.
     detectorSetVersion: async () => {
-      const face = await getActiveModelId('face');
-      return face ? `face=${face}` : undefined;
+      const [face, ocr, qr] = await Promise.all([getActiveModelId('face'), getActiveModelId('ocr'), getActiveModelId('qr')]);
+      return face && ocr && qr ? `face=${face};ocr=${ocr};qr=${qr}` : undefined;
     },
     fetchImage,
     decode: decodeImage,
     hashPixels,
     redactAndEncode,
   });
+}
+
+// §14.3: this step's sendable images, selected and sized for `backend_id`.
+function imagesForStep(session_id: string, backend_id: string, skeleton: SkeletonNode[]) {
+  return prepareObservationImages(skeleton, sendableImages.forSession(session_id), getBackend(backend_id).capabilities, reencodeJpeg);
 }
 
 function createDispatch(logger: RuntimeLogger) {
@@ -83,7 +99,8 @@ function createDispatch(logger: RuntimeLogger) {
       case 'assembleObservation': {
         const req = payload as MessageMap['request']['assembleObservation']['request'];
         const t_start = performance.timeOrigin + performance.now();
-        const result = assembleObservation(req);
+        const prepared = await imagesForStep(req.session_id, req.backend_id, req.skeleton);
+        const result = assembleObservation({ ...req, skeleton: prepared.skeleton, images: prepared.images });
         const t_end = performance.timeOrigin + performance.now();
         logger.record({
           session_id: req.session_id,
@@ -93,6 +110,7 @@ function createDispatch(logger: RuntimeLogger) {
           t_end,
           duration_ms: t_end - t_start,
           outcome: result.status === 'ok' ? 'ok' : 'fail_closed',
+          counts: { images: prepared.images.length },
           reason: result.status === 'blocked' ? 'guard_triggered' : undefined,
         });
         return result;
@@ -108,7 +126,8 @@ function createDispatch(logger: RuntimeLogger) {
         } catch (error) {
           return { status: 'fail', reason: error instanceof ReasonCodeError ? error.reason : 'backend_error' };
         }
-        return agentLoop.decideStep(req, backend, logger);
+        const prepared = await imagesForStep(req.session_id, req.backend_id, req.skeleton);
+        return agentLoop.decideStep({ ...req, skeleton: prepared.skeleton, images: prepared.images }, backend, logger);
       }
 
       case 'agentReportResults': {
@@ -120,17 +139,21 @@ function createDispatch(logger: RuntimeLogger) {
       case 'agentStop': {
         const req = payload as MessageMap['request']['agentStop']['request'];
         agentLoop.stopSession(req.session_id);
+        sendableImages.clear(req.session_id);
         return {};
       }
 
       case 'imageLookup': {
         const req = payload as MessageMap['request']['imageLookup']['request'];
-        return { results: await images.lookup(req.session_id, req.images) };
+        // One lookup per observation: this step's sendable set starts empty.
+        sendableImages.beginObservation(req.session_id);
+        const results = await images.lookup({ session_id: req.session_id, origin: req.origin }, req.images);
+        return { results, send_budget: getBackend(req.backend_id).capabilities.maxImagesPerRequest };
       }
 
       case 'imageProcess': {
         const req = payload as MessageMap['request']['imageProcess']['request'];
-        return images.process(req.session_id, req.image, req.pixels);
+        return images.process({ session_id: req.session_id, origin: req.origin }, req.image, req.pixels);
       }
 
       case 'logRecord': {

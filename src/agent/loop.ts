@@ -21,7 +21,7 @@ import { assembleObservation } from './assemble';
 import { checkPolicy, type PolicyContext } from './policy';
 import { resolveActionTokens } from './resolveTokens';
 import type { Action, ActionResult, AgentResponse } from './schema';
-import type { AgentBackend, SanitizedObservation } from '@/backend/types';
+import type { AgentBackend, ObservationImage, SanitizedObservation } from '@/backend/types';
 import type { ContentField, SkeletonNode } from '@/dom/types';
 import { ReasonCodeError } from '@/logging';
 import type { ReasonCode, RuntimeLogger } from '@/logging';
@@ -39,6 +39,7 @@ export interface DecideStepInput {
   skeleton: SkeletonNode[];
   contentResults: { node_id: string; field: ContentField; text: string }[];
   origin: string; // current page origin, for §13.4 rules 2-4
+  images: ObservationImage[]; // §14.3, already selected/redacted; markers already on `skeleton`
 }
 
 export type DecideStepResult =
@@ -118,6 +119,7 @@ export function createAgentLoop(): AgentLoop {
         skeleton: input.skeleton,
         contentResults: input.contentResults,
         history: session.history,
+        images: input.images,
       });
       if (assembled.status !== 'ok') return { status: 'blocked' };
 

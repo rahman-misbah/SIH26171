@@ -1,8 +1,9 @@
 // §12.2: LlmAgentBackend's retry-once-then-fail behaviour, and that
 // capabilities/client/prompt loading follow the deferred-init contract.
 
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { LlmAgentBackend } from '@/backend/llm/backend';
+import { createGroqClient } from '@/backend/llm/clients/groq';
 import type { ModelClient, ModelResponse } from '@/backend/llm/types';
 import type { BackendCapabilities, SanitizedObservation } from '@/backend/types';
 import { createLogger } from '@/logging';
@@ -139,5 +140,46 @@ describe('LlmAgentBackend', () => {
     await backend.init();
     expect(clientBuilds).toBe(1);
     expect(promptLoads).toBe(1);
+  });
+});
+
+// M9: "images included in the Groq request" -- end to end through the real
+// LlmAgentBackend + GroqClient, with only fetch() stubbed: every observation
+// image reaches the request body as an image_url data URI, in order.
+describe('LlmAgentBackend + GroqClient: observation images reach the request body', () => {
+  it('sends each observation image as a data-URI image part', async () => {
+    const fetchMock = vi.fn<typeof fetch>(
+      async () => new Response(JSON.stringify({ choices: [{ message: { content: VALID } }] }), { status: 200, headers: { 'Content-Type': 'application/json' } }),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+    try {
+      const backend = new LlmAgentBackend({
+        id: 'llm:groq',
+        capabilities: CAPS,
+        logger: createLogger(createFakeSink()),
+        loadSystemPrompt: async () => 'sys',
+        loadClient: async () => createGroqClient({ apiKey: 'test-key', model: 'test-model' }),
+      });
+      await backend.init();
+      await backend.decide({
+        ...obs(),
+        images: [
+          { img_id: 'i1', node_id: 'n1', mime: 'image/jpeg', data: new Uint8Array([0xff, 0xd8, 1]) },
+          { img_id: 'i2', node_id: 'n2', mime: 'image/jpeg', data: new Uint8Array([0xff, 0xd8, 2]) },
+        ],
+      });
+
+      const body = JSON.parse(String(fetchMock.mock.calls[0]![1]!.body)) as {
+        messages: { role: string; content: string | { type: string; image_url?: { url: string } }[] }[];
+      };
+      const user = body.messages.find((m) => m.role === 'user');
+      const parts = Array.isArray(user?.content) ? user.content : [];
+      expect(parts.filter((p) => p.type === 'image_url').map((p) => p.image_url?.url)).toEqual([
+        'data:image/jpeg;base64,/9gB',
+        'data:image/jpeg;base64,/9gC',
+      ]);
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 });

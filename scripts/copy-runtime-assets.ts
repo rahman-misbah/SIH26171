@@ -21,9 +21,15 @@
 //   Workers don't have (§9.5's MediaPipe-in-Worker note). The SIMD-less
 //   module variant doesn't exist upstream, and every browser this project
 //   targets (§4.4) has wasm SIMD.
+// - Tesseract.js (M9, OCR provider -> workerPath/corePath): its classic
+//   worker script plus the SIMD + LSTM-only core (loader + .wasm, from the
+//   *installed* tesseract.js-core, so the two can never be different
+//   versions). Our guarded bootstrap worker (src/models/providers/ocr/
+//   workerBootstrap.ts) importScripts both from public/tesseract/.
+// - zxing-wasm (M9, QR provider -> locateFile): the reader-only .wasm.
 //
 // Run via `npm run postinstall` after `npm install`; re-run manually
-// (`node scripts/copy-runtime-assets.ts`) if either library is upgraded.
+// (`node scripts/copy-runtime-assets.ts`) if any of these libraries is upgraded.
 
 import { existsSync } from 'node:fs';
 import { copyFile, mkdir, readdir } from 'node:fs/promises';
@@ -45,6 +51,24 @@ const GROUPS: AssetGroup[] = [
     from: 'node_modules/onnxruntime-web/dist',
     to: 'public/ort',
     include: (f) => f.startsWith('ort-wasm-simd-threaded.'),
+  },
+  {
+    name: 'tesseract.js',
+    from: 'node_modules/tesseract.js/dist',
+    to: 'public/tesseract',
+    include: (f) => f === 'worker.min.js',
+  },
+  {
+    name: 'tesseract.js-core',
+    from: 'node_modules/tesseract.js-core',
+    to: 'public/tesseract',
+    include: (f) => f === 'tesseract-core-simd-lstm.wasm.js' || f === 'tesseract-core-simd-lstm.wasm',
+  },
+  {
+    name: 'zxing-wasm',
+    from: 'node_modules/zxing-wasm/dist/reader',
+    to: 'public/zxing',
+    include: (f) => f === 'zxing_reader.wasm',
   },
   {
     name: '@mediapipe/tasks-vision',

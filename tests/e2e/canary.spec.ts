@@ -11,11 +11,13 @@
 // (see docs/MILESTONES.md M5 Log for the original ambiguity/decision writeup,
 // and the M7 Log for the recall numbers this fixture produced).
 
+import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { getBackend } from '../../src/backend';
 import type { AssembleResult } from '../../src/agent/assemble';
 import { loadCanaries } from '../fixtures/loadCanaries';
 import { expect, test } from './fixtures';
+import { decodeCodes, imageBytes, normalizeOcr, ocrText, type ObservedImage } from './imageForensics';
 import { startStaticServer } from './staticServer';
 
 const FIXTURES_ROOT = path.resolve(import.meta.dirname, '../fixtures');
@@ -146,17 +148,67 @@ test('canvas.html carries a canvas_skipped marker (pixel-level canaries exercise
   }
 });
 
-test('image fixtures still load (pixel-level canaries exercised in M8/M9)', async ({ context }) => {
+// M9 done-when: "Canary test passes for image fixtures (including OCR of
+// outgoing images)" and "Non-PII text in images stays visible". §18.1: the
+// observation JSON is checked, then every outgoing image is re-OCR'd and
+// re-decoded in Node, and no canary may be readable in any of them.
+test('image fixtures: no canary in the observation or in any outgoing image; non-PII image text stays readable', async ({ context }) => {
+  test.setTimeout(120_000); // cold-loads face + OCR + QR + NER, then OCRs the outputs in Node
+  const canaries = loadCanaries();
   const server = await startStaticServer(FIXTURES_ROOT);
+  const IMAGE_CANARIES = ['email-personal', 'phone', 'pan'];
+
   try {
     const page = await context.newPage();
-    await page.goto(`${server.url}pages/images.html`);
-    for (const id of ['rendered-text', 'face-1', 'face-2', 'qr-1']) {
-      const img = page.locator(`img[data-canary="${id}"]`);
-      await expect(img).toBeVisible();
-      expect(await img.evaluate((el: HTMLImageElement) => el.naturalWidth), `${id} should decode as an image`).toBeGreaterThan(0);
-    }
+    const result = await observe(page, `${server.url}pages/images-text.html`, 60_000);
     await page.close();
+    expect(result.status).toBe('ok');
+    if (result.status !== 'ok') throw new Error('blocked');
+
+    // All three images were processed, passed every detector and were sent.
+    const imageNodes = result.observation.dom.filter((n) => n.image !== undefined);
+    expect(imageNodes.map((n) => n.image_omitted)).toEqual([undefined, undefined, undefined]);
+    const images = result.observation.images as unknown as ObservedImage[];
+    expect(images).toHaveLength(3);
+    expect(images.every((i) => i.mime === 'image/jpeg')).toBe(true);
+
+    // Observation JSON (image bytes are base64 there, so this also checks
+    // no canary sits in the encoded data as plain text).
+    expect(findLeaks(result.observation, canaries)).toEqual([]);
+
+    // Positive control: the same forensics DO find the canaries in the
+    // original (unredacted) fixtures, so a clean result below means
+    // "redacted", not "the checker can't read anything".
+    const originals = ['rendered-text.png', 'ocr-mixed.png', 'qr-1.png'].map((f) => readFileSync(path.join(FIXTURES_ROOT, 'assets', f)));
+    const originalText = (await ocrText(originals)).map(normalizeOcr);
+    expect(originalText.some((t) => t.words.includes('abcpe1234f'))).toBe(true);
+    expect(originalText.some((t) => t.digits.includes('9876543210'))).toBe(true);
+    expect(await decodeCodes(originals)).toContain('priya.sharma.canary@example.com');
+
+    // The outgoing images: nothing readable, nothing decodable.
+    const outgoing = images.map(imageBytes);
+    const outText = (await ocrText(outgoing)).map(normalizeOcr);
+    const outCodes = await decodeCodes(outgoing);
+    test.info().annotations.push({
+      type: 'measurement',
+      description: `outgoing image OCR: ${JSON.stringify(outText.map((t) => t.words))}; decoded codes: ${outCodes.length}`,
+    });
+    for (const id of IMAGE_CANARIES) {
+      const canary = canaries.find((c) => c.id === id)!;
+      const value = normalizeOcr(canary.value);
+      for (const text of outText) {
+        expect(text.words.includes(value.words), `${id} readable in an outgoing image`).toBe(false);
+        if (value.digits.length >= 8) expect(text.digits.includes(value.digits), `${id} digits readable in an outgoing image`).toBe(false);
+      }
+    }
+    expect(outText.some((t) => t.words.includes('canary@') || t.words.includes('sharma.canary'))).toBe(false);
+    expect(outCodes).toEqual([]);
+
+    // Non-PII text stays visible for the agent (M9 done-when).
+    const allOut = outText.map((t) => t.words).join(' ');
+    for (const word of ['order', 'summary', 'shipped', 'front', 'desk']) {
+      expect(allOut, `non-PII word "${word}" should survive redaction`).toContain(word);
+    }
   } finally {
     await server.close();
   }

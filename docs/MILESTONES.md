@@ -128,7 +128,7 @@ Done when:
 - [x] Second observation of the same page hits the cache (logged)
 - [x] No raw image bytes in IndexedDB (inspect) (inspected by the e2e suite; M8 stores no pixels at all -- see Log)
 
-## M9 — Images 2: OCR, QR, selection · `todo`
+## M9 — Images 2: OCR, QR, selection · `done`
 **Spec:** §6.4–6.5, §14.3 · **Estimate:** 1 day
 
 - Tesseract.js provider (word boxes via `blocks: true`), OCR spans → sanitization, low-confidence rule, OCR tokens.
@@ -136,9 +136,9 @@ Done when:
 - Image selection by `backend.capabilities`, `request_limit` markers; images included in the Groq request.
 
 Done when:
-- [ ] Canary test passes for image fixtures (including OCR of outgoing images)
-- [ ] Non-PII text in images stays visible
-- [ ] p50/p95 per image op recorded
+- [x] Canary test passes for image fixtures (including OCR of outgoing images)
+- [x] Non-PII text in images stays visible
+- [x] p50/p95 per image op recorded
 
 ## M10 — Firefox + latency pass · `todo`
 **Spec:** §4, §15 · **Estimate:** 1 day
@@ -265,3 +265,58 @@ Done when:
   - **Sending images:** selection (§14.3) needs a host-side store or a cache read of the redacted image by `img_id`. The assembler currently gets image outcomes only through `image_omitted` on the skeleton, and `observation.images` is still `[]` in `assemble.ts`.
   - **Pool API:** `createWorkerPool` is ready for the OCR pool (K workers).
   - **Messaging:** the Chromium base64 transport for pixel PNGs hasn't been profiled on large images; the 2048 px transfer cap is a latency knob for M10.
+
+### 2026-09-24 — M9 Images 2: OCR, QR, selection
+- Summary:
+  - **OCR** (§6.4.2, §9.5): Tesseract.js 6.0.1 (core 6.1.2, `eng`, LSTM only) in K pre-initialized workers behind `createWorkerPool`. It returns word boxes via `blocks: true`. `flatten.ts` maps confidence 0–100 to buckets (medium from 60, high from 85).
+  - **QR** (§6.4.3, §9.5): zxing-wasm 3.1.4 in its own pool of N workers. Formats are QR plus the common 1D/2D codes. `returnErrors: true`, so codes that are found but can't be decoded are still redacted. Only boxes leave the worker.
+  - **Pipeline** (§6.4, §6.5):
+    - Face, OCR and QR run in parallel on the same pixels.
+    - OCR lines go through the §7 regex → NER → decide path (`src/image/ocrRedact.ts`). Only PII words, plus the low-confidence `@`/4+-digit words, are covered.
+    - OCR PII gets `{img_id, bbox}` tokens in the session's token map.
+    - A failure in any stage, including NER on OCR text, withholds the image as `detector_failed`.
+    - M8's send gate is gone: every image that passes all three detectors is sendable.
+  - **Selection** (§14.3, §6.7):
+    - A per-session, in-memory store keeps the current step's redacted images (`src/image/sendable.ts`).
+    - `selectImages` + `prepareObservationImages` pick images by `maxImagesPerRequest` (in-viewport first, then larger area) and re-encode to fit `maxImageBytes` (`fitBytes.ts`).
+    - `imageLookup` returns a send budget, so the content script stops processing once enough images are ready (`budgetQueue.ts`).
+    - Images end up in `observation.images` and in the Groq request body.
+  - **Private hosts:** the §6.2.2 fetch fallback refuses private/intranet hosts (`privateHost.ts`, new `ReasonCode` `private_host`).
+  - **Transport:** the Chromium codec carries `Uint8Array` (`platform/binaryCodec.ts`).
+- Measurements:
+  - 486 of 486 unit tests pass (up from 397); `npm run check` clean; e2e 16 of 16.
+  - The image canary test finds no canary in the observation JSON, none in Node-side Tesseract OCR of every outgoing image, and no code decodes from any outgoing image. The same checks do find the canaries in the unredacted originals (positive control).
+  - Non-PII words ("order", "summary", "shipped", "front", "desk") still OCR out of the outgoing `ocr-mixed.png`.
+  - Image ops (wasm, p50/p95 ms, n=7): acquire 21/82; face 41/264; OCR 1554/2605 (includes waiting for a free OCR worker); QR 61/121; redact 1007/1009; `context.assemble` 3/4.7.
+  - Cold `model.load`: zxing 153 ms, BlazeFace 710 ms, Tesseract 1512 ms, NER 2581 ms.
+  - The second observation of each page was answered entirely from the cache (21 hits). On `images.html` (7 images) exactly 4 were sent and fewer than 7 were processed.
+- Deviations from SPEC (all approved in the M9 plan unless noted; recorded as "As built (M9)" notes in SPEC):
+  1. **§6.5: OCR boxes aren't labelled with token text.** The image cache outlives the session, so a drawn token could mean something else in a later one. Tokens are created only when an image is processed fresh; a cache hit creates none.
+  2. **§9.6:** face and QR each own a pool of N workers instead of sharing vision workers. OCR uses `createWorkerPool` instead of Tesseract's scheduler. Face and QR share a new main-thread helper, `providers/workerClient.ts` (a small refactor of the M8 face provider; behaviour unchanged).
+  3. **§6.7/§14.3 send budget:** content stops processing at the backend's image limit and marks the rest `request_limit`. An image too large even after re-encoding is also `request_limit`, not a new reason. A visible image node with no sendable result gets `unreadable`.
+  4. **§6.2.2:** the private-host refusal is new (M8 Noticed #1). It checks the host as written; a public name resolving to a private address is not caught (documented in SPEC §4.3 item 16).
+  5. **Library quirks, found while building (SPEC §9.5, CLAUDE.md):**
+     - Tesseract.js uses a classic worker and `importScripts`. Our guarded bootstrap `workerBootstrap.ts` is bundled as a classic IIFE, installs the egress guard, pre-loads the core and wraps `TesseractCore` with a `locateFile`: Emscripten looks for the `.wasm` next to the *worker* script, and Tesseract passes none.
+     - The core is now copied from the installed `tesseract.js-core` by `copy-runtime-assets.ts`, not downloaded by `fetch-models.ts` (so loader and wasm can't differ in version). This resolves M4's pin note: v6 as SPEC says, even though npm latest is 7.
+     - zxing's `.wasm` defaults to jsDelivr; `locateFile` points it at `public/zxing/`.
+  6. **Contract additions:**
+     - `imageLookup` gains `origin`, `backend_id` and `send_budget`.
+     - `imageProcess` and `assembleObservation` gain `origin` and `backend_id` respectively.
+     - `ObserveOptions.backend_id`; `DecideStepInput.images`; `AssembleInput.images`.
+     - `ReasonCode` `private_host`.
+     - `ImagePipeline.lookup/process` now take `{session_id, origin}`.
+  7. **Fixtures:** `rendered-text.png` was regenerated (M4's cut the email off, so output OCR would have passed trivially), and `ocr-mixed.png` was added. Both are rendered by `tests/fixtures/renderTextFixtures.ts`.
+     - New pages: `faces.html` (4 faces) and `images-text.html` (3 text/QR images), each fitting the mock backend's 4-image limit. `images.html` now has 7 images, to exercise `request_limit`.
+     - The e2e browser maps `xo.edward.test` to 127.0.0.1 (`--host-resolver-rules`), because the fallback now refuses 127.0.0.1.
+- Noticed (out of scope):
+  1. **`image.redact` takes a constant ~1000 ms per image,** even for tiny ones. Likely `OffscreenCanvas.convertToBlob` throttled in the offscreen document. Top M10 latency item.
+  2. **OCR p50 is 1.5 s,** mostly queueing on K ≤ 2 workers plus cold start. M10 tuning.
+  3. **Wrong compute label in `model.load`.** The registry logs the global `deps.compute`, not each provider's effective compute. Tesseract would be logged as `webgpu` on a GPU machine, although §10.3 says it always reports `wasm`. Fixing it needs a small provider-contract field.
+  4. **NER redacts "Call"** in "Call Priya: …" (`rendered-text.png`). It most likely tags "Call Priya" as one NAME span. This errs on the safe side.
+  5. Old cache records (including M8's face-only `detector_set_version`) are still never pruned (M8 Noticed #2).
+  6. Firefox behaviour of the new pieces is untested: the `Uint8Array` transport, Tesseract's classic worker, the zxing worker, and host-fetch/private-host (M10).
+  7. Images are only checked to reach the Groq request in a unit test (fetch stubbed). A real-key manual look at the request body is still open.
+- Notes for next milestone: M10 (Firefox + latency pass) is next.
+  - **Latency:** start with `image.redact` (constant ~1 s; see Noticed 1), then OCR pool size and warm start. §15's warm start (load all four models plus one warm-up inference at compute-host start) doesn't exist yet: models load lazily on the first observation.
+  - **Firefox:** the Gecko transport uses structured clone, so `Uint8Array`/`ArrayBuffer` should pass through untouched; verify. Tesseract's bootstrap relies on Vite emitting classic IIFE workers; check the Firefox build does the same. Verify that `--host-resolver-rules`-style e2e tricks aren't needed for manual Firefox testing: serve fixtures from a non-private hostname, or expect cross-origin images to be `unreadable`.
+  - **Benchmark:** `tests/e2e/latency.spec.ts` already produces per-op p50/p95 for text and image ops, and can seed the §15 benchmark script and `docs/BENCHMARKS.md`.

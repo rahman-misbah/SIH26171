@@ -8,6 +8,8 @@ test-results
 public/models
 public/ort
 public/mediapipe
+public/tesseract
+public/zxing
 *.local
 .env
 .env.*

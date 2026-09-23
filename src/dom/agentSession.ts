@@ -55,7 +55,7 @@ export function attachAgentSession(platform: Platform, doc: Document): AgentSess
 
     try {
       for (let step = 1; step <= MAX_STEPS && !state.stopRequested; step++) {
-        const built = await buildStepObservation(platform.transport, doc, { session_id, step, task, origin });
+        const built = await buildStepObservation(platform.transport, doc, { session_id, step, task, origin, backend_id });
 
         const decideResult = await platform.transport.request('agentDecide', {
           session_id,

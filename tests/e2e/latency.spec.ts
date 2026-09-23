@@ -76,3 +76,47 @@ test('baseline latency for dom.phase_a / dom.phase_b / sanitize.regex', async ({
     await server.close();
   }
 });
+
+// M9 done-when: "p50/p95 per image op recorded". Every image fixture page,
+// each observed twice (the second pass is answered from the image cache), so
+// the summary has cold and warm numbers for acquisition, each detector,
+// redaction and cache hits, plus each model's cold load.
+const IMAGE_PAGES = ['faces', 'images-text', 'images'] as const;
+const IMAGE_OPS = ['image.acquire', 'image.face', 'image.ocr', 'image.qr', 'image.redact', 'image.cache_hit', 'image.cache_miss', 'context.assemble'] as const;
+
+test('image pipeline latency per op (p50/p95)', async ({ context, extensionId }) => {
+  test.setTimeout(120_000);
+  const server = await startStaticServer(FIXTURES_ROOT);
+  try {
+    const page = await context.newPage();
+    for (const pass of [1, 2]) {
+      for (const name of IMAGE_PAGES) {
+        await page.goto(`${server.url}pages/${name}.html?pass=${pass}`);
+        await page.waitForFunction(() => document.documentElement.dataset.edwardObservation, undefined, { timeout: 60_000 });
+      }
+    }
+    await page.close();
+    await new Promise((resolve) => setTimeout(resolve, 5_500));
+
+    const offscreen = await context.newPage();
+    await offscreen.goto(`chrome-extension://${extensionId}/offscreen.html`);
+    const records = await readLogRecords(offscreen);
+    await offscreen.close();
+
+    const stats = aggregate(records);
+    const summary = Object.fromEntries(IMAGE_OPS.map((op) => [op, stats.perOp[op]]));
+    const loads = records
+      .filter((r) => r.op === 'model.load')
+      .map((r) => ({ model: r.model_id, ms: Math.round(r.duration_ms), compute: r.compute, outcome: r.outcome }));
+    test.info().annotations.push({
+      type: 'measurement',
+      description: `image latency (p50/p95 ms, n) over ${IMAGE_PAGES.length} pages x2: ${JSON.stringify(summary)}; model.load: ${JSON.stringify(loads)}`,
+    });
+
+    for (const op of ['image.face', 'image.ocr', 'image.qr', 'image.redact', 'image.cache_hit'] as const) {
+      expect(stats.perOp[op]?.count, op).toBeGreaterThan(0);
+    }
+  } finally {
+    await server.close();
+  }
+});

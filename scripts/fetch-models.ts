@@ -7,9 +7,10 @@
 // not a Vite/WXT module — Node 24 runs .ts files directly (type-stripping,
 // verified during M4 planning), so no ts-node/tsx devDependency was added.
 //
-// zxing-wasm (QR, tier-1) isn't listed here: its npm package bundles its own
-// .wasm binary (dist/reader/zxing_reader.wasm) — nothing to fetch until M9
-// adds the package as a dependency and the bundler pulls it in normally.
+// Runtime .wasm files that ship inside npm packages (zxing-wasm's reader, and
+// since M9 the Tesseract.js core -- previously downloaded here pinned to
+// 6.1.2, now copied from the installed tesseract.js-core so it always
+// matches its loader) are copied by scripts/copy-runtime-assets.ts instead.
 
 import { createWriteStream, existsSync } from 'node:fs';
 import { mkdir, stat } from 'node:fs/promises';
@@ -32,14 +33,6 @@ const ASSETS: ModelAsset[] = [
     url: 'https://storage.googleapis.com/mediapipe-models/face_detector/blaze_face_short_range/float16/1/blaze_face_short_range.tflite',
     out: 'face/blaze_face_short_range.tflite',
     approxBytes: 230_000,
-  },
-  {
-    // OCR, tier 1 (§9.5): Tesseract.js core, SIMD+LSTM-only engine (smallest/fastest
-    // tier-1 variant), pinned to tesseract.js-core 6.1.2 to match SPEC's "Tesseract.js v6"
-    // (the npm package itself is now at v7 — noted in the M4 Log as a spec/reality drift).
-    url: 'https://cdn.jsdelivr.net/npm/tesseract.js-core@6.1.2/tesseract-core-simd-lstm.wasm',
-    out: 'ocr/tesseract-core-simd-lstm.wasm',
-    approxBytes: 2_100_000,
   },
   {
     // OCR, tier 1 (§9.5): English language data (SPEC: "eng (+hin if time)").

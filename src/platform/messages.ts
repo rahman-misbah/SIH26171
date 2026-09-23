@@ -1,7 +1,7 @@
 // §4.2: message shapes for `Transport`'s request/response calls, long-lived
 // ports, and tab pushes (`sendToTab`/`onTabPush`). Concrete entries (ping in
 // M3, DOM chunks in M5, agent-loop/tab-push messages in M6, image
-// acquisition in M8) are added here directly as each milestone needs them;
+// acquisition in M8, OCR/QR/selection fields in M9) are added here directly as each milestone needs them;
 // this file is not meant to be built out ahead of need.
 
 import type { AssembleResult } from '@/agent/assemble';
@@ -38,6 +38,8 @@ export interface RequestMessageMap {
       page: { url: string; title: string; viewport: { w: number; h: number }; scroll: { x: number; y: number } }; // already sanitized
       skeleton: SkeletonNode[];
       contentResults: { node_id: string; field: ContentField; text: string }[];
+      // §14.3: whose capabilities select this step's images (M9).
+      backend_id: string;
     };
     response: AssembleResult;
   };
@@ -73,9 +75,13 @@ export interface RequestMessageMap {
   // §6.6/§15: one per observation, no pixels -- computes each image's
   // img_id host-side and answers from the cache where it can, so a cache
   // hit never pays for a canvas read or a pixel transfer.
+  // M9: also starts the step's sendable-image set, and returns the send
+  // budget (the backend's maxImagesPerRequest, §14.3) so the content script
+  // stops processing once that many images are ready (§6.7: "the assembler
+  // waits only for images it will actually send").
   imageLookup: {
-    request: { session_id: string; images: ImageRef[] };
-    response: { results: LookupResult[] };
+    request: { session_id: string; origin: string; backend_id: string; images: ImageRef[] };
+    response: { results: LookupResult[]; send_budget: number };
   };
   // §6.2/§6.4: one image the lookup couldn't answer. `pixels` is a PNG of
   // the content script's canvas read (§4.3.7 -- lossless, and much smaller
@@ -83,7 +89,7 @@ export interface RequestMessageMap {
   // was tainted or the image never loaded, in which case the compute host
   // tries its own fetch (§6.2.2) before withholding it as unreadable.
   imageProcess: {
-    request: { session_id: string; image: ImageRef; pixels?: ArrayBuffer };
+    request: { session_id: string; origin: string; image: ImageRef; pixels?: ArrayBuffer };
     response: ProcessResult;
   };
   // Forwards an already-timed LogRecord from the content script (§11) --

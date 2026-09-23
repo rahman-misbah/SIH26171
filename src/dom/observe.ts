@@ -19,6 +19,7 @@ export interface ObserveOptions {
   step: number;
   task: string;
   origin: string;
+  backend_id: string; // its capabilities drive image selection (§14.3)
 }
 
 // The shared piece of a step: Phase A -> Phase B -> chunked sanitize. Used by
@@ -55,7 +56,7 @@ const URL_UNIT_ID = '__url__';
 const TITLE_UNIT_ID = '__title__';
 
 export async function buildStepObservation(transport: Transport, doc: Document, options: ObserveOptions): Promise<StepObservation> {
-  const { session_id, step, task, origin } = options;
+  const { session_id, step, task, origin, backend_id } = options;
 
   const phaseAStart = performance.timeOrigin + performance.now();
   const { skeleton, registry, textNodes } = await runPhaseA(doc);
@@ -101,6 +102,8 @@ export async function buildStepObservation(transport: Transport, doc: Document, 
     acquirePageImages(transport, doc, skeleton, registry, {
       session_id,
       step,
+      origin,
+      backend_id,
       report: (record) => reportTiming(transport, record),
     }),
   ]);
@@ -131,11 +134,12 @@ export async function buildStepObservation(transport: Transport, doc: Document, 
 }
 
 export async function observePage(transport: Transport, doc: Document, options: ObserveOptions): Promise<AssembleResult> {
-  const { session_id, step } = options;
+  const { session_id, step, backend_id } = options;
   const built = await buildStepObservation(transport, doc, options);
   return transport.request('assembleObservation', {
     session_id,
     step,
+    backend_id,
     task: built.task,
     page: built.page,
     skeleton: built.skeleton,

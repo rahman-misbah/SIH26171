@@ -51,6 +51,7 @@ export type ReasonCode =
   | 'guard_triggered'
   | 'model_load_failed'
   | 'egress_blocked'
+  | 'private_host' // M9: §6.2.2 fetch fallback refused a private/intranet host
   | 'unknown';
 
 export interface LogRecord {

@@ -2,12 +2,13 @@
 // no logging) so it can be called from wherever owns sessions -- the
 // compute host's dispatch table for M5's observe-only path, and
 // src/agent/loop.ts (M6) for real agent-loop steps, which passes `history`.
-// `images` stays empty until M8.
+// `images` are already redacted, selected and sized (prepareImages.ts, M9);
+// their nodes' omission markers are already on `skeleton`.
 
 import { mergeWindows } from '@/dom/contentUnits';
 import type { ContentField, SanitizedNode, SkeletonNode } from '@/dom/types';
 import { matchRegexSpans } from '@/sanitize/regex';
-import type { SanitizedObservation } from '@/backend/types';
+import type { ObservationImage, SanitizedObservation } from '@/backend/types';
 
 export interface ContentResult {
   node_id: string;
@@ -27,6 +28,8 @@ export interface AssembleInput {
   // itself returned). Owned by the agent loop (M6) -- empty for a standalone
   // assemble call (M5's observe-only path, e2e ping test).
   history?: SanitizedObservation['history'];
+  // §14.3: from prepareObservationImages(). Omitted -> no images.
+  images?: ObservationImage[];
 }
 
 export type AssembleResult = { status: 'ok'; observation: SanitizedObservation } | { status: 'blocked' };
@@ -111,7 +114,7 @@ export function assembleObservation(input: AssembleInput): AssembleResult {
     task: input.task,
     page: input.page,
     dom: buildDom(input.skeleton, input.contentResults),
-    images: [],
+    images: input.images ?? [],
     history: input.history ?? [],
   };
 
