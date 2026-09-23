@@ -48,6 +48,7 @@ export type ReasonCode =
   | 'detector_failed'
   | 'request_limit'
   | 'guard_triggered'
+  | 'model_load_failed'
   | 'unknown';
 
 export interface LogRecord {
@@ -79,6 +80,11 @@ export interface SessionRecord {
   backend_id: string;
   backend_model?: string;
 }
+
+// §9.4: one entry appended to a SessionRecord.models list once a provider
+// actually loads. Registries are lazy singletons (§9.4), so this arrives
+// well after the session's one-time recordSession() call -- see recordModelLoad.
+export type ModelLoadEntry = SessionRecord['models'][number];
 
 // Type-level contract for CLAUDE.md's `logger.timed(op, meta, fn)` — records
 // start/end/outcome automatically, including on thrown errors. The ring

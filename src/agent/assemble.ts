@@ -75,9 +75,18 @@ function buildDom(skeleton: SkeletonNode[], results: ContentResult[]): Sanitized
 // and can coincidentally satisfy a Tier-1 regex + checksum by chance (a
 // UUID's hex/hyphen run occasionally passes the Luhn/Verhoeff check), which
 // would false-trigger the guard on data that was never PII in the first
-// place. No public-email allowlist exists until M7, so any real hit still
-// aborts the step -- correctly fail-closed, and in practice a sign of a
-// pipeline bug (everything should already be tokenized by this point).
+// place.
+//
+// EMAIL matches are excluded from this rescan (M7, §7.5): a public-contact
+// email is *deliberately* left untokenized by sanitizeText.ts, using node
+// context (page origin, landmark/heading/markup/UGC hints) that no longer
+// exists at this stage -- content is just plain strings by the time
+// assembleObservation runs, so this guard can't re-derive that decision, and
+// re-running the heuristic with less information than the original decision
+// had isn't a safety net, it's a coin flip. Every other PII type has no such
+// exemption and should never legitimately survive to this stage, so a real
+// hit for any of them still aborts the step (fail-closed, and in practice a
+// sign of a pipeline bug).
 function collectContentStrings(observation: SanitizedObservation): string[] {
   const strings = [observation.task, observation.page.url, observation.page.title];
   for (const node of observation.dom) {
@@ -89,7 +98,9 @@ function collectContentStrings(observation: SanitizedObservation): string[] {
 }
 
 function finalGuardTriggered(observation: SanitizedObservation): boolean {
-  return collectContentStrings(observation).some((text) => matchRegexSpans(text).length > 0);
+  return collectContentStrings(observation).some((text) =>
+    matchRegexSpans(text).some((span) => span.type !== 'EMAIL'),
+  );
 }
 
 export function assembleObservation(input: AssembleInput): AssembleResult {

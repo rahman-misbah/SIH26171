@@ -121,4 +121,41 @@ describe('createLogger.timed', () => {
     expect(sink.sessions[0]?.session_id).toBe('s1');
     logger.stop();
   });
+
+  it('appends a model-load entry to an already-recorded session and upserts it on the next flush', async () => {
+    const sink = createFakeSink();
+    const logger = createLogger(sink);
+
+    logger.recordSession({
+      session_id: 's1',
+      started_at: Date.now(),
+      device: { browser: 'chromium', gpu: { available: false }, compute: 'wasm', hardwareConcurrency: 4 },
+      models: [],
+      backend_id: 'unassigned',
+    });
+    await logger.flush();
+    expect(sink.sessions).toHaveLength(1);
+    expect(sink.sessions[0]?.models).toEqual([]);
+
+    logger.recordModelLoad('s1', { capability: 'ner', model_id: 'ner/gravitee-bert-small-pii', tier: 1, compute: 'wasm' });
+    await logger.flush();
+
+    // Same session_id upserted, not a second session row.
+    expect(sink.sessions).toHaveLength(1);
+    expect(sink.sessions[0]?.models).toEqual([
+      { capability: 'ner', model_id: 'ner/gravitee-bert-small-pii', tier: 1, compute: 'wasm' },
+    ]);
+    logger.stop();
+  });
+
+  it('is a no-op for an unknown session_id', async () => {
+    const sink = createFakeSink();
+    const logger = createLogger(sink);
+
+    logger.recordModelLoad('unknown', { capability: 'ner', model_id: 'x', tier: 1, compute: 'wasm' });
+    await logger.flush();
+
+    expect(sink.sessions).toHaveLength(0);
+    logger.stop();
+  });
 });

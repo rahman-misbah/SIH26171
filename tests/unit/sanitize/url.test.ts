@@ -2,11 +2,25 @@
 // fixture's values (§18 item 1).
 
 import { describe, expect, it } from 'vitest';
+import { createSanitizeMemo } from '@/sanitize/memo';
+import { passthroughNer } from '@/sanitize/ner';
+import type { SanitizeTextContext } from '@/sanitize/sanitizeText';
 import { TokenMapImpl } from '@/sanitize/tokenMap';
 import { sanitizeUrl } from '@/sanitize/url';
 
-function ctx() {
-  return { origin: 'http://localhost/', tokenMap: new TokenMapImpl(), node_id: 'n1', field: 'href' };
+function ctx(overrides: Partial<SanitizeTextContext> = {}): SanitizeTextContext {
+  return {
+    origin: 'http://localhost/',
+    tokenMap: new TokenMapImpl(),
+    memo: createSanitizeMemo(),
+    ner: passthroughNer,
+    logger: { record: () => {} },
+    session_id: 's1',
+    node_id: 'n1',
+    field: 'href',
+    isMailtoHref: false,
+    ...overrides,
+  };
 }
 
 describe('sanitizeUrl', () => {
@@ -58,12 +72,10 @@ describe('sanitizeUrl', () => {
 
   it('reuses the shared token map, so a query value resolves back to the raw PII (stability, §7.6)', async () => {
     const map = new TokenMapImpl();
-    const urlOut = await sanitizeUrl('https://example.com/reset?email=priya.sharma.canary%40example.com', {
-      origin: 'http://localhost/',
-      tokenMap: map,
-      node_id: 'n1',
-      field: 'href',
-    });
+    const urlOut = await sanitizeUrl(
+      'https://example.com/reset?email=priya.sharma.canary%40example.com',
+      ctx({ tokenMap: map }),
+    );
     expect(urlOut).toContain('PII_OTHER_1');
     expect(map.resolve('[PII_OTHER_1]')).toBe('priya.sharma.canary@example.com');
   });

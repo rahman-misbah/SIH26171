@@ -6,6 +6,7 @@ coverage
 playwright-report
 test-results
 public/models
+public/ort
 *.local
 .env
 .env.*

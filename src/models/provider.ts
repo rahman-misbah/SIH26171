@@ -24,6 +24,12 @@ export interface ModelProvider<C extends Capability> {
     compute: 'webgpu' | 'wasm';
     assetUrl: (p: string) => string;
     logger: Logger;
+    // M7 addition (deliberate, see docs/MILESTONES.md M7 Log): the
+    // compute-host-lifetime session this load is happening under -- lets a
+    // provider log its own ongoing per-call timings (e.g. NER's
+    // `sanitize.ner`, §9.6) with the same session_id getModel() already uses
+    // for `model.load`, without a second registry-owned logging path.
+    session_id: string;
   }): Promise<CapabilityImpl<C>>;
   dispose(): Promise<void>;
 }

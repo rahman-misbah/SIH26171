@@ -63,6 +63,9 @@ export interface SkeletonNode {
   // a plain structural fact (not page content, not PII), so it's captured
   // directly in Phase A rather than routed through Phase B sanitization.
   form_action_origin?: string;
+  // §7.5: structural context for the public-vs-private email heuristic,
+  // computed in Phase A (no content read). Only set on content-bearing nodes.
+  context_hints?: ContextHints;
   // Fields captured in Phase A whose sanitized text is still pending from
   // Phase B; resolved into `SanitizedNode.content` by (node_id, field).
   pending_content: ContentField[];

@@ -25,6 +25,7 @@ import type { AgentBackend, SanitizedObservation } from '@/backend/types';
 import type { ContentField, SkeletonNode } from '@/dom/types';
 import { ReasonCodeError } from '@/logging';
 import type { ReasonCode, RuntimeLogger } from '@/logging';
+import { createSanitizeMemo, type SanitizeMemo } from '@/sanitize/memo';
 import { TokenMapImpl } from '@/sanitize/tokenMap';
 
 // §13.2 default.
@@ -64,6 +65,8 @@ export interface AgentLoop {
   // PII before an agent-loop step ever runs) -- the agent loop is the single
   // owner of per-session token maps, not just of decideStep's callers.
   getOrCreateTokenMap(session_id: string): TokenMapImpl;
+  // §7.7: same lifecycle as the token map (per session, cleared with it).
+  getOrCreateMemo(session_id: string): SanitizeMemo;
 }
 
 interface PendingStep {
@@ -75,6 +78,7 @@ interface PendingStep {
 
 interface AgentSession {
   tokenMap: TokenMapImpl;
+  memo: SanitizeMemo;
   abortController: AbortController;
   history: SanitizedObservation['history'];
   pending: PendingStep | undefined;
@@ -90,7 +94,13 @@ export function createAgentLoop(): AgentLoop {
   function getOrCreateSession(session_id: string): AgentSession {
     let session = sessions.get(session_id);
     if (!session) {
-      session = { tokenMap: new TokenMapImpl(), abortController: new AbortController(), history: [], pending: undefined };
+      session = {
+        tokenMap: new TokenMapImpl(),
+        memo: createSanitizeMemo(),
+        abortController: new AbortController(),
+        history: [],
+        pending: undefined,
+      };
       sessions.set(session_id, session);
     }
     return session;
@@ -185,5 +195,6 @@ export function createAgentLoop(): AgentLoop {
     recordStepResults,
     stopSession,
     getOrCreateTokenMap: (session_id: string) => getOrCreateSession(session_id).tokenMap,
+    getOrCreateMemo: (session_id: string) => getOrCreateSession(session_id).memo,
   };
 }

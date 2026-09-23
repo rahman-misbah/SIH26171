@@ -2,7 +2,7 @@
 // including on thrown errors, and never awaits the sink on the hot path — the
 // ring buffer is flushed to the sink on a timer instead.
 
-import type { Logger, LogMeta, LogRecord, OpName, ReasonCode, SessionRecord } from './schema';
+import type { Logger, LogMeta, LogRecord, ModelLoadEntry, OpName, ReasonCode, SessionRecord } from './schema';
 import type { LogSink } from './sink';
 
 const RING_BUFFER_CAP = 10_000;
@@ -26,6 +26,13 @@ function toReasonCode(error: unknown): ReasonCode {
 
 export interface RuntimeLogger extends Logger {
   recordSession(session: SessionRecord): void;
+  // §9.4: getModel() is a lazy singleton, so a model typically loads well
+  // after recordSession()'s one-time call -- this appends one entry to that
+  // session's `models` list and re-queues the whole record so the next
+  // flush's sink.putSession() upserts it (IdbSink keys the sessions store by
+  // session_id and uses IDBObjectStore.put, which overwrites in place).
+  // No-op if session_id is unknown (nothing to update).
+  recordModelLoad(session_id: string, entry: ModelLoadEntry): void;
   // Ingests an already-timed record from another context (e.g. the content
   // script, which has no logger of its own -- its `indexedDB` would hit the
   // *page's* origin, not the extension's -- so it forwards a finished
@@ -38,6 +45,7 @@ export interface RuntimeLogger extends Logger {
 export function createLogger(sink: LogSink): RuntimeLogger {
   let ring: LogRecord[] = [];
   let pendingSessions: SessionRecord[] = [];
+  const sessions = new Map<string, SessionRecord>();
 
   function push(record: LogRecord): void {
     ring.push(record);
@@ -81,7 +89,15 @@ export function createLogger(sink: LogSink): RuntimeLogger {
       }
     },
     recordSession(session: SessionRecord): void {
+      sessions.set(session.session_id, session);
       pendingSessions.push(session);
+    },
+    recordModelLoad(session_id: string, entry: ModelLoadEntry): void {
+      const session = sessions.get(session_id);
+      if (!session) return;
+      const updated = { ...session, models: [...session.models, entry] };
+      sessions.set(session_id, updated);
+      pendingSessions.push(updated);
     },
     record(record: LogRecord): void {
       push(record);

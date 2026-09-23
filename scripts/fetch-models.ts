@@ -49,8 +49,14 @@ const ASSETS: ModelAsset[] = [
   },
   {
     // NER, tier 1 (§9.5): gravitee-io/bert-small-pii-detection, quantized ONNX.
+    // Transformers.js expects a specific local layout -- `onnx/<name>_<dtype-suffix>.onnx`,
+    // e.g. `onnx/model_quantized.onnx` for `dtype: 'q8'` -- not the upstream
+    // repo's flat `model.quant.onnx` filename (verified empirically while
+    // building the M7 NER provider: from_pretrained() 404s against the flat
+    // layout). SPEC §9.5 anticipated exactly this ("if its file layout
+    // doesn't load directly, re-export to the Transformers.js layout").
     url: 'https://huggingface.co/gravitee-io/bert-small-pii-detection/resolve/main/model.quant.onnx',
-    out: 'ner/model.quant.onnx',
+    out: 'ner/onnx/model_quantized.onnx',
     approxBytes: 28_700_000,
   },
   {

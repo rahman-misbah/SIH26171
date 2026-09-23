@@ -9,6 +9,7 @@ import { configureBackendDeps, getBackend, getBackendSettings } from '@/backend'
 import { detectDevice } from '@/hw';
 import { createLogger, IdbSink, ReasonCodeError } from '@/logging';
 import type { LogRecord, RuntimeLogger, SessionRecord } from '@/logging';
+import { configureModelDeps, getModel } from '@/models';
 import { onComputeHostRequest } from '@/platform';
 import type { MessageMap, Platform } from '@/platform';
 import { sanitizeUnit } from '@/sanitize';
@@ -35,10 +36,19 @@ function createDispatch(logger: RuntimeLogger) {
           { session_id: req.session_id, counts: { units: req.units.length } },
           async () => {
             const tokenMap = agentLoop.getOrCreateTokenMap(req.session_id);
+            const memo = agentLoop.getOrCreateMemo(req.session_id);
+            const ner = await getModel('ner');
             const results = await Promise.all(
               req.units.map(async (unit) => ({
                 unit_id: unit.unit_id,
-                text: await sanitizeUnit(unit, { origin: req.origin, tokenMap }),
+                text: await sanitizeUnit(unit, {
+                  origin: req.origin,
+                  tokenMap,
+                  memo,
+                  ner,
+                  logger,
+                  session_id: req.session_id,
+                }),
               })),
             );
             return { results };
@@ -116,13 +126,22 @@ export async function bootstrapComputeHost(platform: Platform): Promise<void> {
   const device = await detectDevice(platform.name);
   const backendSettings = await getBackendSettings(platform.settings);
 
+  const session_id = crypto.randomUUID();
   const session: SessionRecord = {
-    session_id: crypto.randomUUID(),
+    session_id,
     started_at: Date.now(),
     device,
-    models: [], // model registry doesn't exist until M7
+    // Populated as getModel() lazily loads providers during the session
+    // (§9.4) -- see logger.recordModelLoad(), called from the registry.
+    models: [],
     backend_id: backendSettings.selectedBackendId,
   };
   logger.recordSession(session);
+
+  // getModel()'s factories (models.config.ts) need these but can't receive
+  // them synchronously through getModel(capability) itself (§9.4), same
+  // reasoning as configureBackendDeps.
+  configureModelDeps({ compute: device.compute, assetUrl: platform.assetUrl, logger, session_id });
+
   await logger.flush();
 }

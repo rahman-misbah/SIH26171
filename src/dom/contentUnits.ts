@@ -77,7 +77,7 @@ export function buildContentUnits(
       if (field === 'text') {
         const raw = textNodes.get(node.node_id)?.textContent ?? '';
         for (const window of windowText(raw)) {
-          units.push({ unit_id: nextUnitId(), node_id: node.node_id, field: 'text', text: window });
+          units.push({ unit_id: nextUnitId(), node_id: node.node_id, field: 'text', text: window, context: node.context_hints });
         }
         continue;
       }
@@ -86,7 +86,7 @@ export function buildContentUnits(
       if (!el) continue;
       const raw = readElementField(el, field);
       if (raw === '') continue;
-      units.push({ unit_id: nextUnitId(), node_id: node.node_id, field, text: raw });
+      units.push({ unit_id: nextUnitId(), node_id: node.node_id, field, text: raw, context: node.context_hints });
     }
   }
 

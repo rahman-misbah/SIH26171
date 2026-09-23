@@ -1,9 +1,18 @@
 import { describe, expect, it } from 'vitest';
-import { sanitizeUnit } from '@/sanitize/pipeline';
+import { passthroughNer } from '@/sanitize/ner';
+import { createSanitizeMemo } from '@/sanitize/memo';
+import { sanitizeUnit, type PipelineContext } from '@/sanitize/pipeline';
 import { TokenMapImpl } from '@/sanitize/tokenMap';
 
-function ctx() {
-  return { origin: 'http://localhost/', tokenMap: new TokenMapImpl() };
+function ctx(): PipelineContext {
+  return {
+    origin: 'http://localhost/',
+    tokenMap: new TokenMapImpl(),
+    memo: createSanitizeMemo(),
+    ner: passthroughNer,
+    logger: { record: () => {} },
+    session_id: 's1',
+  };
 }
 
 describe('sanitizeUnit', () => {
@@ -33,5 +42,27 @@ describe('sanitizeUnit', () => {
   it('leaves non-PII text untouched', async () => {
     const out = await sanitizeUnit({ unit_id: 'u1', node_id: 'n1', field: 'text', text: 'hello world' }, ctx());
     expect(out).toBe('hello world');
+  });
+
+  it('keeps a public support email as literal text, not tokenized', async () => {
+    const out = await sanitizeUnit(
+      {
+        unit_id: 'u1',
+        node_id: 'n1',
+        field: 'text',
+        text: 'email support@example.com for help',
+        context: { in_landmark: false, near_contact_heading: false, in_contact_markup: true, in_ugc_block: false },
+      },
+      { ...ctx(), origin: 'https://example.com' },
+    );
+    expect(out).toBe('email support@example.com for help');
+  });
+
+  it('a repeated identical unit hits the memo on the second call (same PipelineContext)', async () => {
+    const c = ctx();
+    const unit = { unit_id: 'u1', node_id: 'n1', field: 'text' as const, text: 'reach me at priya@example.com' };
+    const first = await sanitizeUnit(unit, c);
+    const second = await sanitizeUnit(unit, c);
+    expect(second).toBe(first);
   });
 });

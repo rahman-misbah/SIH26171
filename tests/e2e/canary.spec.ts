@@ -5,11 +5,11 @@
 // the mock backend registered via getBackend() (§12.4), and checks for
 // canaries.
 //
-// M5's own pipeline is regex tier (§7.1) + a pass-through NER stub (real NER
-// arrives in M7) -- so NAME/ADDRESS/DOB canaries (NER-only, not
-// regex-detectable) cannot leak-proof yet. profile.html is the only fixture
-// carrying those and stays under a scoped test.fail until M7 (see
-// docs/MILESTONES.md M5 Log for the full ambiguity/decision writeup).
+// M7 wires in the real NER provider (§7.2, gravitee-io/bert-small-pii-detection),
+// so profile.html's NAME/ADDRESS/DOB canaries (NER-only, not regex-detectable)
+// are exercised as a real assertion below instead of M5's scoped test.fail
+// (see docs/MILESTONES.md M5 Log for the original ambiguity/decision writeup,
+// and the M7 Log for the recall numbers this fixture produced).
 
 import path from 'node:path';
 import { getBackend } from '../../src/backend';
@@ -25,10 +25,19 @@ const FIXTURES_ROOT = path.resolve(import.meta.dirname, '../fixtures');
 // a secret/iframe-excluded field) -- see tests/fixtures/canaries.json.
 const REGEX_CATCHABLE_PAGES = ['form', 'comments', 'contact', 'query-links', 'secret-form', 'iframe'] as const;
 
-async function observe(page: import('@playwright/test').Page, url: string): Promise<AssembleResult> {
+// contact.html's `email-public-support` canary is *designed* to survive
+// (canaries.json's own note: "public per §7.5 heuristic, so it should stay
+// visible once M7 lands") -- §7.5's public-contact-email heuristic keeps it
+// as literal text rather than tokenizing it. Every other canary on every
+// other page must still be fully redacted.
+const EXPECTED_SURVIVORS: Partial<Record<(typeof REGEX_CATCHABLE_PAGES)[number], string[]>> = {
+  contact: ['email-public-support'],
+};
+
+async function observe(page: import('@playwright/test').Page, url: string, timeout = 10_000): Promise<AssembleResult> {
   await page.goto(url);
   const handle = await page.waitForFunction(() => document.documentElement.dataset.edwardObservation, undefined, {
-    timeout: 10_000,
+    timeout,
   });
   const raw = await handle.jsonValue();
   return JSON.parse(raw as string) as AssembleResult;
@@ -65,26 +74,26 @@ test('the real text pipeline leaks no canaries on regex/URL-catchable fixtures',
   });
 
   for (const name of REGEX_CATCHABLE_PAGES) {
-    expect(leaksByPage[name], `${name}.html should leak no canaries`).toEqual([]);
+    const expected = EXPECTED_SURVIVORS[name] ?? [];
+    expect(leaksByPage[name], `${name}.html should leak only its expected survivors (if any)`).toEqual(expected);
   }
 });
 
-test('profile.html still leaks its NER-only canaries (expected until M7 lands real NER)', async ({ context }) => {
-  test.fail(
-    true,
-    'NAME/ADDRESS/DOB are NER-only, not regex-detectable, and M5 ships a pass-through NER stub ' +
-      '(see docs/MILESTONES.md M5 Log). PHONE on this page already passes via the regex tier.',
-  );
-
+test('profile.html leaks no canaries with the real NER provider (§7.2, M7)', async ({ context }) => {
+  test.setTimeout(60_000); // real model load + inference, not just DOM/regex work
   const canaries = loadCanaries();
   const server = await startStaticServer(FIXTURES_ROOT);
 
   try {
     const page = await context.newPage();
-    const result = await observe(page, `${server.url}pages/profile.html`);
+    // The NER model loads (and runs) for real here -- give it more headroom
+    // than the regex-only fixtures' default timeout.
+    const result = await observe(page, `${server.url}pages/profile.html`, 30_000);
     expect(result.status).toBe('ok');
     if (result.status !== 'ok') throw new Error('blocked');
-    expect(findLeaks(result.observation, canaries)).toEqual([]);
+    const leaks = findLeaks(result.observation, canaries);
+    test.info().annotations.push({ type: 'measurement', description: `profile.html leaks: ${JSON.stringify(leaks)}` });
+    expect(leaks).toEqual([]);
     await page.close();
   } finally {
     await server.close();

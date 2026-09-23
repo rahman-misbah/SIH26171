@@ -13,6 +13,7 @@
 
 import { resolveAccessibleName } from './accessibleName';
 import { semanticClassFlags } from './classFlags';
+import { computeContextHints } from './contextHints';
 import { createIdGenerator } from './ids';
 import { findTrimmedLandmarkRoot } from './landmark';
 import { ElementRegistry } from './registry';
@@ -209,6 +210,7 @@ export async function runPhaseA(doc: Document): Promise<PhaseAResult> {
         bbox,
         visible: visibility.visible,
         in_viewport: intersectsViewport(bbox, doc),
+        context_hints: parentEl ? computeContextHints(parentEl) : undefined,
         pending_content: ['text'],
       });
       continue;
@@ -293,6 +295,7 @@ export async function runPhaseA(doc: Document): Promise<PhaseAResult> {
         flags: semanticClassFlags(el).length > 0 ? semanticClassFlags(el) : undefined,
         secret: secret || undefined,
         form_action_origin: formActionOrigin(el),
+        context_hints: pending.length > 0 ? computeContextHints(el) : undefined,
         pending_content: pending,
       });
       registry.register(id, el);

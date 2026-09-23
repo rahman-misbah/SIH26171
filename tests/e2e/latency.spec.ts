@@ -1,7 +1,9 @@
-// §15 "measure, then tune": baseline latency for the M5 vertical slice's
-// three ops (dom.phase_a in the content script, dom.phase_b likewise,
-// sanitize.regex host-side), recorded as a Playwright annotation for the M5
-// Log entry -- same pattern as M3's ping round-trip measurement.
+// §15 "measure, then tune": baseline latency for dom.phase_a/dom.phase_b
+// (content script) and sanitize.regex (host-side), recorded as a Playwright
+// annotation for the M5 Log entry -- same pattern as M3's ping round-trip
+// measurement. M7 adds sanitize.ner and model.load to the same summary
+// (§9.6's done-when: "p50 sanitize.ner recorded, WebGPU vs WASM if
+// available") -- profile.html (already in PAGES) is what triggers real NER.
 
 import path from 'node:path';
 import type { Page } from '@playwright/test';
@@ -56,16 +58,20 @@ test('baseline latency for dom.phase_a / dom.phase_b / sanitize.regex', async ({
       'dom.phase_a': stats.perOp['dom.phase_a'],
       'dom.phase_b': stats.perOp['dom.phase_b'],
       'sanitize.regex': stats.perOp['sanitize.regex'],
+      'sanitize.ner': stats.perOp['sanitize.ner'],
+      'model.load': stats.perOp['model.load'],
     };
+    const nerCompute = records.find((r) => r.op === 'sanitize.ner')?.compute;
 
     test.info().annotations.push({
       type: 'measurement',
-      description: `M5 baseline latency (p50/p95 ms, n) over ${PAGES.length} fixture pages: ${JSON.stringify(summary)}`,
+      description: `baseline latency (p50/p95 ms, n) over ${PAGES.length} fixture pages: ${JSON.stringify(summary)}; sanitize.ner ran on compute=${nerCompute}`,
     });
 
     expect(stats.perOp['dom.phase_a']?.count).toBeGreaterThan(0);
     expect(stats.perOp['dom.phase_b']?.count).toBeGreaterThan(0);
     expect(stats.perOp['sanitize.regex']?.count).toBeGreaterThan(0);
+    expect(stats.perOp['sanitize.ner']?.count).toBeGreaterThan(0);
   } finally {
     await server.close();
   }

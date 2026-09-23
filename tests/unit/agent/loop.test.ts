@@ -192,7 +192,9 @@ describe('createAgentLoop.decideStep', () => {
             pending_content: ['text'],
           },
         ],
-        contentResults: [{ node_id: 'n1', field: 'text', text: 'contact priya.sharma.canary@example.com' }],
+        // Not EMAIL (M7, §7.5): a public-contact email is deliberately left
+        // untokenized, so it no longer trips the guard on its own.
+        contentResults: [{ node_id: 'n1', field: 'text', text: 'call +91 98765 43210' }],
       }),
       backend,
       logger,

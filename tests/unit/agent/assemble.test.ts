@@ -89,7 +89,10 @@ describe('assembleObservation', () => {
       baseInput({
         skeleton: [textNode],
         // Simulates a pipeline bug: raw PII slipped through un-tokenized.
-        contentResults: [{ node_id: 'n1', field: 'text', text: 'contact priya.sharma.canary@example.com' }],
+        // Not EMAIL (M7, §7.5): a public-contact email is *deliberately*
+        // left untokenized, so the guard no longer treats that type as a
+        // leak signal on its own -- see the guard's own header comment.
+        contentResults: [{ node_id: 'n1', field: 'text', text: 'call +91 98765 43210' }],
       }),
     );
     expect(result).toEqual({ status: 'blocked' });
@@ -113,5 +116,25 @@ describe('assembleObservation', () => {
       }),
     );
     expect(result.status).toBe('ok');
+  });
+
+  it('does not block on a plaintext email (M7, §7.5: a public-contact email is deliberately left untokenized upstream)', () => {
+    const result = assembleObservation(
+      baseInput({
+        skeleton: [textNode],
+        contentResults: [{ node_id: 'n1', field: 'text', text: 'contact support@example.com' }],
+      }),
+    );
+    expect(result.status).toBe('ok');
+  });
+
+  it('still blocks on a non-EMAIL regex match even when an EMAIL is also present', () => {
+    const result = assembleObservation(
+      baseInput({
+        skeleton: [textNode],
+        contentResults: [{ node_id: 'n1', field: 'text', text: 'support@example.com or call +91 98765 43210' }],
+      }),
+    );
+    expect(result).toEqual({ status: 'blocked' });
   });
 });
