@@ -125,3 +125,20 @@ describe('runPhaseA', () => {
     expect(registry.resolve(input!.node_id)?.id).toBe('pw');
   });
 });
+
+describe('runPhaseA image flags (§6.1)', () => {
+  it('flags <img> elements', async () => {
+    setBody('<img src="a.png" alt="">');
+    const { skeleton } = await runPhaseA(document);
+    expect(skeleton.find((n) => n.tag === 'img')?.image).toBe('img');
+  });
+
+  it('flags elements with a url() background-image, not gradients', async () => {
+    setBody(
+      '<div id="bg" style="background-image: url(\'b.png\')">x</div><div id="grad" style="background-image: linear-gradient(red, blue)">y</div>',
+    );
+    const { skeleton } = await runPhaseA(document);
+    const divs = skeleton.filter((n) => n.tag === 'div');
+    expect(divs.map((d) => d.image)).toEqual(['background', undefined]);
+  });
+});

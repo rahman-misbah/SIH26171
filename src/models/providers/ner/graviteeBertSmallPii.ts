@@ -8,6 +8,7 @@
 import { createMicroBatcher } from '@/core/pool';
 import type { Bucket, PiiNer } from '@/models/capabilities';
 import type { ModelProvider } from '@/models/provider';
+import { logEgressBlocked } from '../egressGuard';
 
 // §7.2/§9.6 defaults.
 const MICRO_BATCH_MAX = 16;
@@ -25,7 +26,7 @@ interface BatchAck {
   results?: WorkerSpan[][];
   message?: string;
 }
-type WorkerAck = InitAck | BatchAck;
+type WorkerAck = InitAck | BatchAck | { type: 'egress-blocked' };
 
 export const graviteeBertSmallPii: ModelProvider<'ner'> = {
   id: 'ner/gravitee-bert-small-pii',
@@ -36,6 +37,13 @@ export const graviteeBertSmallPii: ModelProvider<'ner'> = {
 
   async load(ctx): Promise<PiiNer> {
     const worker = new Worker(new URL('./worker.ts', import.meta.url), { type: 'module' });
+    // Attached before init, so a request refused during the model load is
+    // logged too (see ../egressGuard.ts).
+    worker.addEventListener('message', (event: MessageEvent<WorkerAck>) => {
+      if (event.data.type === 'egress-blocked') {
+        logEgressBlocked(ctx.logger, { session_id: ctx.session_id, op: 'sanitize.ner', model_id: graviteeBertSmallPii.id });
+      }
+    });
 
     await new Promise<void>((resolve, reject) => {
       function onMessage(event: MessageEvent<WorkerAck>): void {

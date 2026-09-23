@@ -45,10 +45,12 @@ export type ReasonCode =
   | 'backend_invalid_response'
   | 'backend_error'
   | 'unreadable'
+  | 'too_small'
   | 'detector_failed'
   | 'request_limit'
   | 'guard_triggered'
   | 'model_load_failed'
+  | 'egress_blocked'
   | 'unknown';
 
 export interface LogRecord {

@@ -51,9 +51,9 @@ const modelLibraryAndVendorRestriction = [
 export default tseslint.config(
   {
     // public/models and public/ort are vendored model weights / ONNX Runtime
-    // Web runtime files (fetch-models.ts / copy-ort-assets.ts), not project
+    // Web runtime files (fetch-models.ts / copy-runtime-assets.ts), not project
     // source -- CLAUDE.md's "vendored runtime files in public/" exception.
-    ignores: ['.output/**', '.wxt/**', 'node_modules/**', 'reference/**', 'public/models/**', 'public/ort/**'],
+    ignores: ['.output/**', '.wxt/**', 'node_modules/**', 'reference/**', 'public/models/**', 'public/ort/**', 'public/mediapipe/**'],
   },
   js.configs.recommended,
   ...tseslint.configs.recommended,

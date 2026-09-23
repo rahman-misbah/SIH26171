@@ -8,6 +8,7 @@ import type { AssembleResult } from '@/agent/assemble';
 import type { DecideStepResult } from '@/agent/loop';
 import type { ActionResult } from '@/agent/schema';
 import type { ContentField, ContentUnit, SkeletonNode } from '@/dom/types';
+import type { ImageRef, LookupResult, ProcessResult } from '@/image/pipeline';
 import type { LogRecord } from '@/logging/schema';
 
 export interface RequestMessageMap {
@@ -68,6 +69,22 @@ export interface RequestMessageMap {
   agentStop: {
     request: { session_id: string };
     response: Record<string, never>;
+  };
+  // §6.6/§15: one per observation, no pixels -- computes each image's
+  // img_id host-side and answers from the cache where it can, so a cache
+  // hit never pays for a canvas read or a pixel transfer.
+  imageLookup: {
+    request: { session_id: string; images: ImageRef[] };
+    response: { results: LookupResult[] };
+  };
+  // §6.2/§6.4: one image the lookup couldn't answer. `pixels` is a PNG of
+  // the content script's canvas read (§4.3.7 -- lossless, and much smaller
+  // than raw RGBA over Chromium's base64 messaging); absent when the canvas
+  // was tainted or the image never loaded, in which case the compute host
+  // tries its own fetch (§6.2.2) before withholding it as unreadable.
+  imageProcess: {
+    request: { session_id: string; image: ImageRef; pixels?: ArrayBuffer };
+    response: ProcessResult;
   };
   // Forwards an already-timed LogRecord from the content script (§11) --
   // it has no logger of its own; see RuntimeLogger.record()'s doc comment.

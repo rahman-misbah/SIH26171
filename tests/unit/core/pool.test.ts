@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { createMicroBatcher } from '@/core/pool';
+import { createMicroBatcher, createWorkerPool } from '@/core/pool';
 
 beforeEach(() => {
   vi.useFakeTimers();
@@ -62,5 +62,88 @@ describe('createMicroBatcher', () => {
     expect(await batcher.submit(1)).toBe(2);
     expect(await batcher.submit(2)).toBe(3);
     expect(run).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe('createWorkerPool (§9.6: bounded pool of long-lived workers)', () => {
+  function deferred<T>() {
+    let resolve!: (value: T) => void;
+    let reject!: (error: unknown) => void;
+    const promise = new Promise<T>((res, rej) => {
+      resolve = res;
+      reject = rej;
+    });
+    return { promise, resolve, reject };
+  }
+
+  it('refuses an empty worker list', () => {
+    expect(() => createWorkerPool([])).toThrow();
+  });
+
+  it('never runs more jobs at once than there are workers', async () => {
+    const pool = createWorkerPool(['w1', 'w2']);
+    let active = 0;
+    let peak = 0;
+    const gates = [deferred<void>(), deferred<void>(), deferred<void>(), deferred<void>()];
+    const jobs = gates.map((gate) =>
+      pool.run(async () => {
+        active++;
+        peak = Math.max(peak, active);
+        await gate.promise;
+        active--;
+      }),
+    );
+    await vi.advanceTimersByTimeAsync(0);
+    expect(active).toBe(2);
+    for (const gate of gates) gate.resolve();
+    await Promise.all(jobs);
+    expect(peak).toBe(2);
+  });
+
+  it('starts queued jobs in FIFO order as workers free up', async () => {
+    const pool = createWorkerPool(['only']);
+    const started: number[] = [];
+    const gate = deferred<void>();
+    const first = pool.run(async () => {
+      started.push(1);
+      await gate.promise;
+    });
+    const second = pool.run(async () => {
+      started.push(2);
+    });
+    const third = pool.run(async () => {
+      started.push(3);
+    });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(started).toEqual([1]);
+    gate.resolve();
+    await Promise.all([first, second, third]);
+    expect(started).toEqual([1, 2, 3]);
+  });
+
+  it('hands each job a worker, never the same busy worker to two jobs', async () => {
+    const pool = createWorkerPool(['a', 'b']);
+    const gate = deferred<void>();
+    const seen: string[] = [];
+    const jobs = [0, 1].map(() =>
+      pool.run(async (worker) => {
+        seen.push(worker);
+        await gate.promise;
+      }),
+    );
+    await vi.advanceTimersByTimeAsync(0);
+    expect(new Set(seen)).toEqual(new Set(['a', 'b']));
+    gate.resolve();
+    await Promise.all(jobs);
+  });
+
+  it('a failing job rejects only its own caller and frees its worker', async () => {
+    const pool = createWorkerPool(['only']);
+    const failing = pool.run(async () => {
+      throw new Error('boom');
+    });
+    const next = pool.run(async (worker) => `${worker}-ok`);
+    await expect(failing).rejects.toThrow('boom');
+    await expect(next).resolves.toBe('only-ok');
   });
 });

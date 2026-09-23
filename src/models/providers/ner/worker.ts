@@ -11,6 +11,11 @@
 // Offsets: see alignTokens.ts's header for why raw Transformers.js output
 // has to be re-aligned to the original text at all.
 
+// Must stay the first import: installs the network egress guard before
+// Transformers.js / ONNX Runtime Web's module code runs (defence in depth --
+// neither is known to ship telemetry, but both default to CDN URLs; see
+// ../egressGuard.ts).
+import '../workerEgressGuard';
 import { env, pipeline, type TokenClassificationPipeline } from '@huggingface/transformers';
 import { alignTokensToText, groupAlignedTokens, type RawNerToken } from './alignTokens';
 import { bucketConfidence, mapRawLabel } from './labelMap';

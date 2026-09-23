@@ -14,6 +14,9 @@ import type { Capability } from './capabilities';
 import type { CapabilityImpl, ModelProvider } from './provider';
 
 const instances = new Map<Capability, Promise<unknown>>();
+// Provider id per capability, set only once that provider actually loaded --
+// a capability running on its fail-closed fallback has no entry.
+const activeProviderIds = new Map<Capability, string>();
 
 // minMemoryGB isn't checked: ModelDeps only carries the §10 compute decision
 // (webgpu/wasm), not deviceMemoryGB -- no provider in this milestone sets
@@ -29,14 +32,27 @@ function selectProvider<C extends Capability>(capability: C, compute: 'webgpu' |
   return candidates.find((p) => isSatisfied(p.requires, compute));
 }
 
-// Only 'ner' has a consumer this milestone (§7.2's pass-through-shaped
-// fallback); face/ocr/qr have none until M8/M9, so there is nothing safe to
-// guess at yet -- fail loud rather than fabricate a shape no one has designed.
+// What a capability falls back to when no provider is available or its load
+// failed (§9.4: "the affected item fails closed"):
+// - ner: an empty result -- the regex tier still runs independently upstream
+//   (§7.1), so this degrades recall rather than bypassing sanitization.
+// - face/ocr/qr: every call *rejects* with `detector_failed`, so the image
+//   pipeline withholds the image (§6.4.6) instead of treating "found nothing"
+//   as "nothing to redact". An empty list here would pass a face straight
+//   through as clean -- exactly what §2.1 forbids.
+function detectorFailed(): Promise<never> {
+  return Promise.reject(new ReasonCodeError('detector_failed'));
+}
+
 function fallbackImpl<C extends Capability>(capability: C): CapabilityImpl<C> {
-  if (capability === 'ner') {
-    return { tag: async (texts: string[]) => texts.map(() => []) } as unknown as CapabilityImpl<C>;
+  switch (capability) {
+    case 'ner':
+      return { tag: async (texts: string[]) => texts.map(() => []) } as unknown as CapabilityImpl<C>;
+    case 'ocr':
+      return { read: detectorFailed } as unknown as CapabilityImpl<C>;
+    default: // 'face' | 'qr'
+      return { detect: detectorFailed } as unknown as CapabilityImpl<C>;
   }
-  throw new Error(`getModel('${capability}'): no provider available and no fallback implementation exists yet`);
 }
 
 async function loadModel<C extends Capability>(capability: C): Promise<CapabilityImpl<C>> {
@@ -74,6 +90,7 @@ async function loadModel<C extends Capability>(capability: C): Promise<Capabilit
         }
       },
     );
+    activeProviderIds.set(capability, provider.id);
     deps.logger.recordModelLoad(deps.session_id, {
       capability,
       model_id: provider.id,
@@ -94,4 +111,12 @@ export function getModel<C extends Capability>(capability: C): Promise<Capabilit
   const promise = loadModel(capability);
   instances.set(capability, promise);
   return promise;
+}
+
+// §6.6: the image cache key includes a detector_set_version that "changes
+// whenever the active model tiers change" -- built from these ids. Loads the
+// capability if needed; undefined means it's running on its fallback.
+export async function getActiveModelId(capability: Capability): Promise<string | undefined> {
+  await getModel(capability);
+  return activeProviderIds.get(capability);
 }

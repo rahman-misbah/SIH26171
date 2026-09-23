@@ -6,6 +6,7 @@
 // IndexedDB (a content-script `indexedDB` would hit the *page's* origin).
 
 import { buildContentUnits } from './contentUnits';
+import { acquirePageImages } from './images';
 import { runPhaseA } from './skeleton';
 import type { AssembleResult } from '@/agent/assemble';
 import type { LogRecord } from '@/logging/schema';
@@ -90,9 +91,19 @@ export async function buildStepObservation(transport: Transport, doc: Document, 
     counts: { units: allUnits.length },
   });
 
-  const chunkResults = await Promise.all(
-    chunk(allUnits, CHUNK_SIZE).map((batch) => transport.request('sanitizeChunk', { session_id, origin, units: batch })),
-  );
+  // §15 parallel observation: image acquisition/processing runs alongside
+  // text sanitization. It writes `image_omitted` markers onto `skeleton` in
+  // place, so it must finish before the skeleton is handed to assembly.
+  const [chunkResults] = await Promise.all([
+    Promise.all(
+      chunk(allUnits, CHUNK_SIZE).map((batch) => transport.request('sanitizeChunk', { session_id, origin, units: batch })),
+    ),
+    acquirePageImages(transport, doc, skeleton, registry, {
+      session_id,
+      step,
+      report: (record) => reportTiming(transport, record),
+    }),
+  ]);
 
   const sanitizedById = new Map<string, string>();
   for (const { results } of chunkResults) {

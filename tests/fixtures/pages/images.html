@@ -5,7 +5,15 @@
      and a QR code that genuinely decodes to a canary email (M9, zxing-wasm).
      None of this is exercised by M4's own canary test yet — image acquisition
      doesn't exist until M8 — but the assets exist now for those milestones to
-     pick up. -->
+     pick up.
+
+     M8 added face-3.png / face-4.png: photo-realistic *synthetic* faces
+     (StyleGAN2 output from thispersondoesnotexist.com -- not real people),
+     public domain as algorithm-generated works, downscaled to 330px from
+     Wikimedia Commons: "File:GAN Mensch StyleGAN2.png" and
+     "File:This Person Does Not Exist example.jpg". The flat cartoon faces
+     are kept too: BlazeFace detects both kinds, and the realistic ones are
+     the closer proxy for real sites. -->
 <html lang="en">
   <head>
     <meta charset="utf-8" />
@@ -15,6 +23,8 @@
     <img src="../assets/rendered-text.png" alt="" data-canary="rendered-text" width="420" height="120" />
     <img src="../assets/face-1.png" alt="" data-canary="face-1" width="200" height="200" />
     <img src="../assets/face-2.png" alt="" data-canary="face-2" width="200" height="200" />
+    <img src="../assets/face-3.png" alt="" data-canary="face-3" width="200" height="200" />
+    <img src="../assets/face-4.png" alt="" data-canary="face-4" width="200" height="200" />
     <img src="../assets/qr-1.png" alt="" data-canary="qr-1" width="300" height="300" />
   </body>
 </html>

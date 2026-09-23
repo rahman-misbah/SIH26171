@@ -1,11 +1,11 @@
 // §9.6: "A shared bounded async queue (src/core/pool.ts) enforces the
-// ceilings." For M7's single NER worker, the ceiling that matters is the
-// micro-batch shape itself (§2.5, §7.2: up to B items or T ms, whichever
-// first) -- createMicroBatcher is that primitive. M8/M9's fixed-size vision
-// (N workers) and OCR (K workers) pools are a different shape (round-robin
-// dispatch across several long-lived workers, not batching independent
-// calls into one) and will extend this file with a second export rather
-// than duplicating it, per the M7 plan.
+// ceilings." Two primitives, for two shapes of work:
+// - createMicroBatcher (M7): coalesces independent calls into one batched
+//   inference call on a single worker -- the NER shape (§2.5, §7.2: up to B
+//   items or T ms, whichever first).
+// - createWorkerPool (M8): dispatches one job at a time to each of N
+//   long-lived workers, queueing the rest -- the vision (N workers) and OCR
+//   (K workers) shape.
 
 export interface MicroBatcherOptions<In, Out> {
   maxBatch: number;
@@ -76,4 +76,48 @@ export function createMicroBatcher<In, Out>(options: MicroBatcherOptions<In, Out
   }
 
   return { submit };
+}
+
+export interface WorkerPool<W> {
+  readonly size: number;
+  // Runs `job` on the next free worker. Resolves/rejects with the job's own
+  // result -- a failing job never affects other callers, and its worker is
+  // returned to the pool either way.
+  run<R>(job: (worker: W) => Promise<R>): Promise<R>;
+}
+
+// §9.6: the concurrency ceiling is the worker count itself -- each worker
+// runs at most one job at a time, so model instances are never asked to
+// overlap work (and never duplicated beyond N). Waiting jobs start in FIFO
+// order, which preserves the caller's §6.7 priority order. The wait queue
+// itself isn't length-capped: its producers are already bounded (one
+// observation's images, dispatched by the content script a few at a time).
+export function createWorkerPool<W>(workers: W[]): WorkerPool<W> {
+  if (workers.length === 0) throw new Error('createWorkerPool needs at least one worker');
+  const idle = [...workers];
+  const waiting: ((worker: W) => void)[] = [];
+
+  function acquire(): Promise<W> {
+    const worker = idle.pop();
+    if (worker !== undefined) return Promise.resolve(worker);
+    return new Promise<W>((resolve) => waiting.push(resolve));
+  }
+
+  function release(worker: W): void {
+    const next = waiting.shift();
+    if (next) next(worker);
+    else idle.push(worker);
+  }
+
+  return {
+    size: workers.length,
+    async run<R>(job: (worker: W) => Promise<R>): Promise<R> {
+      const worker = await acquire();
+      try {
+        return await job(worker);
+      } finally {
+        release(worker);
+      }
+    },
+  };
 }

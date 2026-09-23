@@ -13,13 +13,14 @@
 
 import { resolveAccessibleName } from './accessibleName';
 import { semanticClassFlags } from './classFlags';
+import { extractCssUrl } from './imageCandidates';
 import { computeContextHints } from './contextHints';
 import { createIdGenerator } from './ids';
 import { findTrimmedLandmarkRoot } from './landmark';
 import { ElementRegistry } from './registry';
 import { isSecretField } from './secret';
 import { ALWAYS_STRIPPED_TAGS, classifyVisibility, computeVisibilitySnapshot } from './visibility';
-import type { BBox, ContentField, ExclusionMarker, NodeState, SkeletonNode } from './types';
+import type { BBox, ContentField, ExclusionMarker, ImageKind, NodeState, SkeletonNode } from './types';
 
 const MARKER_TAGS: Record<string, ExclusionMarker> = {
   iframe: 'iframe_skipped',
@@ -100,6 +101,16 @@ function formActionOrigin(el: Element): string | undefined {
   } catch {
     return undefined;
   }
+}
+
+// §6.1: <img> (incl. srcset/<picture>) or a CSS `background-image: url(...)`
+// -- a structural flag only; the URL itself is read later, content-side,
+// by imageCandidates.ts. Computed style is already resolved for this
+// element by the visibility snapshot, so the extra lookup is cheap.
+function imageKindOf(el: Element, doc: Document): ImageKind | undefined {
+  if (el.tagName.toLowerCase() === 'img') return 'img';
+  const bg = doc.defaultView?.getComputedStyle(el).backgroundImage ?? '';
+  return bg !== '' && bg !== 'none' && extractCssUrl(bg) !== undefined ? 'background' : undefined;
 }
 
 function isScrollable(el: Element, doc: Document): boolean {
@@ -294,6 +305,7 @@ export async function runPhaseA(doc: Document): Promise<PhaseAResult> {
         attrs: type || name ? { type: type ?? undefined, name: name ?? undefined } : undefined,
         flags: semanticClassFlags(el).length > 0 ? semanticClassFlags(el) : undefined,
         secret: secret || undefined,
+        image: imageKindOf(el, doc),
         form_action_origin: formActionOrigin(el),
         context_hints: pending.length > 0 ? computeContextHints(el) : undefined,
         pending_content: pending,

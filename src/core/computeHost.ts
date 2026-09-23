@@ -7,9 +7,11 @@
 import { assembleObservation, createAgentLoop } from '@/agent';
 import { configureBackendDeps, getBackend, getBackendSettings } from '@/backend';
 import { detectDevice } from '@/hw';
+import { createImagePipeline, decodeImage, fetchImage, hashPixels, IdbImageCache, redactAndEncode } from '@/image';
+import type { ImagePipeline } from '@/image';
 import { createLogger, IdbSink, ReasonCodeError } from '@/logging';
 import type { LogRecord, RuntimeLogger, SessionRecord } from '@/logging';
-import { configureModelDeps, getModel } from '@/models';
+import { configureModelDeps, getActiveModelId, getModel } from '@/models';
 import { onComputeHostRequest } from '@/platform';
 import type { MessageMap, Platform } from '@/platform';
 import { sanitizeUnit } from '@/sanitize';
@@ -21,7 +23,29 @@ import { sanitizeUnit } from '@/sanitize';
 // state rather than computeHost.ts keeping a second, separate map.
 const agentLoop = createAgentLoop();
 
+// §6: one image pipeline per compute host, sharing the one IndexedDB cache.
+function createHostImagePipeline(logger: RuntimeLogger): ImagePipeline {
+  return createImagePipeline({
+    cache: new IdbImageCache(),
+    logger,
+    now: () => Date.now(),
+    faceDetector: () => getModel('face'),
+    // §6.6: changes whenever the active face provider changes. M9 extends
+    // this with the OCR/QR provider ids as those stages land.
+    detectorSetVersion: async () => {
+      const face = await getActiveModelId('face');
+      return face ? `face=${face}` : undefined;
+    },
+    fetchImage,
+    decode: decodeImage,
+    hashPixels,
+    redactAndEncode,
+  });
+}
+
 function createDispatch(logger: RuntimeLogger) {
+  const images = createHostImagePipeline(logger);
+
   return async function dispatch(type: string, payload: unknown): Promise<unknown> {
     switch (type) {
       case 'ping': {
@@ -97,6 +121,16 @@ function createDispatch(logger: RuntimeLogger) {
         const req = payload as MessageMap['request']['agentStop']['request'];
         agentLoop.stopSession(req.session_id);
         return {};
+      }
+
+      case 'imageLookup': {
+        const req = payload as MessageMap['request']['imageLookup']['request'];
+        return { results: await images.lookup(req.session_id, req.images) };
+      }
+
+      case 'imageProcess': {
+        const req = payload as MessageMap['request']['imageProcess']['request'];
+        return images.process(req.session_id, req.image, req.pixels);
       }
 
       case 'logRecord': {

@@ -40,8 +40,16 @@ export type ExclusionMarker =
   | 'svg_skipped'
   | 'video_skipped';
 
-// §14.3: why an image node's pixels were left out of the observation.
-export type ImageOmittedReason = 'unreadable' | 'detector_failed' | 'request_limit';
+// §6.1/§6.2/§6.4/§14.3: why an image node's pixels were left out of the
+// observation. `too_small` (§6.1's size floor) was added in M8 -- M2 only
+// listed the §14.3 reasons.
+export type ImageOmittedReason = 'too_small' | 'unreadable' | 'detector_failed' | 'request_limit';
+
+// §6.1: which kind of image a node carries -- an <img> (incl. srcset/
+// <picture>, via currentSrc) or a CSS `background-image: url(...)`. A
+// structural fact set in Phase A (no pixels, no URL -- the URL is content
+// and only ever travels content script -> compute host, never to a backend).
+export type ImageKind = 'img' | 'background';
 
 export interface SkeletonNode {
   node_id: string;
@@ -58,6 +66,7 @@ export interface SkeletonNode {
   flags?: SemanticFlag[];
   secret?: boolean;
   marker?: ExclusionMarker;
+  image?: ImageKind;
   image_omitted?: ImageOmittedReason;
   // §13.4 rule 4: the origin of the enclosing <form>'s `action`, if any --
   // a plain structural fact (not page content, not PII), so it's captured
