@@ -147,7 +147,7 @@ Everything else — DOM extraction, sanitization, image pipeline, model registry
 1. **Compute host placement** (table above). On Chromium, messages to the compute host go content script → background → offscreen document (the offscreen document cannot call `tabs` APIs, so tab-bound messages are routed back through the background).
 2. **Namespace/promises** — use the build tool's unified `browser` export inside `src/platform/` only.
 3. **CSP** — `content_security_policy.extension_pages` must include `'wasm-unsafe-eval'` (needed by ONNX Runtime, Tesseract, zxing). No remote code: all worker scripts and `.wasm` files are bundled and their paths configured explicitly (Transformers.js/ONNX Runtime and Tesseract.js default to CDN URLs — override them).
-4. **Model weights** — tier-1 weights are bundled in the extension (offline demo, no first-run download). Tier-2 weights may be downloaded on demand and stored with the Cache API.
+4. **Model weights** — tier-1 weights are bundled in the extension (offline demo, no first-run download). Tier-2 weights may be downloaded on demand and stored with the Cache API. *As built (M11):* the one shipped tier-2 model, SCRFD-2.5G, is only 3.3 MB, so it is bundled like tier 1 (`npm run fetch-models`) and no on-demand download path exists.
 5. **UI surface** — the popup closes on blur in every browser, so it only starts/stops a task. Live status is shown by a content-script overlay (closed shadow root, excluded from extraction) — identical on all browsers. No `sidePanel` (Chromium-only) or `sidebar_action` (Firefox-only).
 6. **Safari** — built from the same source; packaging via Xcode is documented but not part of the demo path.
 7. **Binary payloads over messaging** — Chromium extension messaging has historically been JSON-serialized (no `ArrayBuffer`/`ImageBitmap`), while Firefox/Safari use structured clone. `Transport` hides this: on Chromium it encodes pixel payloads as lossless PNG → base64 (unless structured clone is confirmed on the target Chrome version); elsewhere it passes buffers through. Consumers always send/receive `ArrayBuffer`. Since M9 the Chromium codec (`src/platform/binaryCodec.ts`) also carries `Uint8Array` (with its own marker), because `ObservationImage.data` is one and plain JSON would turn it into an index-keyed object.
@@ -167,6 +167,7 @@ Everything else — DOM extraction, sanitization, image pipeline, model registry
     - The popup's Start calls it before any `await`, because Firefox drops the user gesture after one. If access is refused, the popup says so and nothing starts.
     - Found in M10 (checklist F3): with access turned off in `about:addons`, Firefox 156 showed no prompt and the task ran on the current tab. The toolbar click most likely grants per-tab access through the manifest's `activeTab` (not proven). Access still comes only from a user action on that tab, so the intent holds, but the refusal branch is unreachable on Firefox 156 and untested there.
 19. **WebGPU in Chromium on Linux**. Found in M10: `navigator.gpu.requestAdapter()` returns `null` by default. With `--enable-unsafe-webgpu --enable-features=Vulkan` Chrome exposes the real Vulkan adapter (Intel Gen-9 on the dev laptop). `--enable-unsafe-webgpu` alone exposes **SwiftShader**, a CPU emulator that detection (§10) would count as a GPU. The benchmark passes both flags and prints the adapter so a SwiftShader run is visible.
+20. **`chrome.runtime.reload()` under Playwright (Chromium, test harness only)**. Found in M11: calling it from the service worker closes the whole browser, even with a tab open, so a test can't reload the extension to pick up a setting that's only read at compute-host start (the §9.4 model override). The face-recall benchmark instead writes storage, closes the context and relaunches on the same profile (`launchExtensionContext(userDataDir)` in `tests/e2e/fixtures.ts`). Not seen outside Playwright.
 
 ### 4.4 Supported-browser test matrix (for the demo)
 
@@ -418,6 +419,9 @@ interface ModelProvider<C extends Capability> {
 - `src/models/models.config.ts` lists providers per capability in preference order. Selection: the highest tier whose `requires` is satisfied by the hardware profile (§10); the user may override in settings.
 - **Adding a model** = one new provider file + one line in `models.config.ts`. No consumer changes.
 - **Runtime failure** (WebGPU device lost, OOM): the affected item fails closed (withheld/redacted). The registry may then switch that capability to the next lower tier for later items and logs the downgrade. An item is never passed through because its detector failed.
+- *As built (M11)* (`src/models/select.ts`, `registry.ts`, `settings.ts`):
+  - **Override:** the model settings (`edward.modelSettings`, settings page "On-device models") name a provider id per capability. An override goes first even if its `requires` isn't met (user decision: SCRFD may run on wasm, just slower); the automatic order follows as its fallbacks. An unknown id is ignored and logged (`model.load`, `skipped`, `model_override_unknown`). Settings are read once at compute-host start, so a change applies after the extension or browser restarts.
+  - **Load-failure downgrade:** a provider that fails to *load* hands over to the next candidate for the rest of the session (user decision), logged as `model.downgrade` with reason `model_load_failed` and the provider now in use. Only if every candidate fails does the capability fall back to fail-closed (withhold). A failure on a single item stays fail-closed for that item, as before; there is no mid-session tier switch after a successful load.
 
 ### 9.5 Model choices for this prototype
 
@@ -442,6 +446,8 @@ Notes to record in code and slides:
 - Confirmed while building M9 (`zxing-wasm` 3.1.4): its `.wasm` defaults to jsDelivr. The QR worker passes `prepareZXingModule({ overrides: { locateFile } })` to point it at `public/zxing/zxing_reader.wasm`. `returnErrors: true` makes codes that were located but failed to decode come back too, and they are redacted as well. Decoded content never leaves the QR worker; only boxes are posted.
 - Check each model's upstream licence before any use beyond the prototype (SCRFD weights originate from InsightFace).
 - Only one tier-2 provider needs to ship (face is the most visible). All others are listed as designed extension points.
+- *As built (M11), SCRFD-2.5G* (`providers/face/scrfd.ts`, `scrfdWorker.ts`, `scrfdDecode.ts`): InsightFace's `det_2.5g.onnx` from its `buffalo_m` pack, fetched from a Hugging Face copy verified byte-identical to the official zip (sha256 `041f73f4…0af9`). **Licence: InsightFace's pretrained models are for non-commercial research use only**; accepted for this prototype (user decision, M11); must be replaced before any other use. Runs on ONNX Runtime Web (`onnxruntime-web/webgpu`, now a direct dependency pinned to the version Transformers.js uses, so one ORT runtime ships). `requires: { webgpu: true }`, so the registry picks it automatically on a WebGPU device and BlazeFace everywhere else. The worker asks ORT for exactly one execution provider, the one the compute decision names: no silent wasm fallback, so the logged compute is the one that ran. If WebGPU fails, the load fails and the registry drops to BlazeFace (§9.4). Input is letterboxed to 640×640 and normalised as in InsightFace's `scrfd.py`. Outputs are picked by shape, not by name (names differ between exports). Score floor 0.3 (InsightFace default 0.5, lowered for recall like BlazeFace), NMS IoU 0.4. Same worker pool, timeout and egress guard as BlazeFace.
+- *Measured (M11)* on `tests/fixtures/assets/face-recall.png` (18 synthetic faces, 160 to 20 px, `npm run bench:faces`, docs/BENCHMARKS.md): BlazeFace found 3/18 on wasm (4/18 on the GPU path), nothing below 128 px; SCRFD found 18/18 with 0 false positives, ~600–770 ms per image on wasm and ~130 ms on WebGPU (BlazeFace ~20–30 ms). BlazeFace short-range is a close-up model: on group photos it misses most faces, which is exactly what §9.5's note above warned about.
 
 ### 9.6 Worker topology (compute host)
 
@@ -591,6 +597,13 @@ Registry: `getClient()` → lazy singleton (mirrors the Python prototype's `conf
 - Versioned by `schema_version`; a server that doesn't support the version returns `426` → backend refuses to start.
 - Publish this as `docs/WIRE_PROTOCOL.md` with JSON Schema files generated from the TypeScript types, so a future server (in any language) can be built against it.
 - Demo scope: stub implementation + a tiny mock server used only in tests.
+- *As built (M11)* (`src/backend/http/`, docs/WIRE_PROTOCOL.md): a working client, not just a stub, plus the mock server (`tests/e2e/mockAgentServer.ts`) that drives one real agent step in `tests/e2e/httpBackend.spec.ts`. Details the spec left open:
+  - The version travels as an `Edward-Schema-Version` header on every request, so `GET /v1/capabilities` (no body) can be refused with `426` too. `426` maps to a new reason code, `backend_version_unsupported`.
+  - Capabilities come from the server, so until `init()` succeeds the backend reports the most restrictive ones (0 images). **The compute host now calls `backend.init()` before reading `capabilities`** for image lookup and selection (`computeHost.ts`); a failed init leaves those restrictive values in place. This is a change outside `src/backend/`, needed because §12.1's contract didn't say capabilities could depend on `init()`.
+  - No retry on an invalid response (the server owns its prompting); 429 → `backend_rate_limited`, other failures → `backend_error`; 30 s timeout; redirects are refused, so an observation reaches only the configured endpoint.
+  - Endpoint rules: HTTPS, or plain http on `localhost`/`127.0.0.1` only; no credentials, query or fragment in the URL. The manifest's `optional_host_permissions` gains `http://localhost/*` and `http://127.0.0.1/*`.
+  - No CORS headers are needed on Chromium (host permission bypasses CORS; the e2e mock server sends none). Not yet checked on Firefox.
+  - JSON Schemas in `docs/wire/` are generated by `npm run wire-schema` (`ts-json-schema-generator`); a unit test fails if they drift from the types, or from the validator's limits (thought ≤ 200, ≤ 3 actions, wait ≤ 3000 ms, now also JSDoc annotations in `agent/schema.ts`).
 
 ### 12.4 Registry and settings (`src/backend/registry.ts`)
 
@@ -744,7 +757,7 @@ State these in code comments and in the presentation:
 - QR/barcode content classification — all codes redacted.
 - Tier 3 LLM disambiguation — cut; ambiguous spans redacted.
 - Multi-tier models — built as an interface; tier 2 demonstrated for face only.
-- Custom reasoning server — the wire protocol is specified and a stub client exists; no server is built. The demo uses Groq through the generic LLM backend.
+- Custom reasoning server — the wire protocol is specified (docs/WIRE_PROTOCOL.md) and a working client exists (M11), tested against a mock server; no real server is built. The demo uses Groq through the generic LLM backend.
 - Secret fields — never read, never typed by the agent.
 - Safari — builds from the same code; not part of the demo.
 - Edge — runs the Chromium build (`.output/chrome-mv3`), which the Chrome e2e suite covers; the manual Edge smoke test (§4.4, §18.5) was cut in M10 (user decision, 2026-09-25) and never run.

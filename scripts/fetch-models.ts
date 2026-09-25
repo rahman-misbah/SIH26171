@@ -35,6 +35,15 @@ const ASSETS: ModelAsset[] = [
     approxBytes: 230_000,
   },
   {
+    // Face, tier 2 (§9.5, M11): SCRFD-2.5G. InsightFace publishes it only
+    // inside buffalo_m.zip (276 MB); this Hugging Face copy is byte-identical
+    // to that zip's det_2.5g.onnx (sha256 041f73f4...0af9, checked in M11).
+    // InsightFace licence: non-commercial research use only.
+    url: 'https://huggingface.co/immich-app/buffalo_m/resolve/main/detection/model.onnx',
+    out: 'face/scrfd_2.5g.onnx',
+    approxBytes: 3_292_009,
+  },
+  {
     // OCR, tier 1 (§9.5): English language data (SPEC: "eng (+hin if time)").
     url: 'https://tessdata.projectnaptha.com/4.0.0/eng.traineddata.gz',
     out: 'ocr/eng.traineddata.gz',

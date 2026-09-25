@@ -20,7 +20,9 @@ export default defineConfig({
     // The only fixed backend origin the extension talks to by default (SPEC §12.6).
     host_permissions: ['https://api.groq.com/*'],
     // Requested at runtime for custom backend origins (SPEC §12.4, §4.3.8).
-    optional_host_permissions: ['https://*/*'],
+    // Plain http only on the local machine, for a development agent server
+    // (§12.4, M11); match patterns without a port match every port.
+    optional_host_permissions: ['https://*/*', 'http://localhost/*', 'http://127.0.0.1/*'],
     // 'offscreen' backs the Chromium compute host (SPEC §4.1) and is Chromium-only —
     // Firefox has no offscreen API and warns on the unrecognized permission if included.
     // 'storage' backs the settings store on every browser.

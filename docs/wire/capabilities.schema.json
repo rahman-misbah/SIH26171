@@ -1,0 +1,29 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$ref": "#/definitions/WireCapabilities",
+  "definitions": {
+    "WireCapabilities": {
+      "$ref": "#/definitions/BackendCapabilities"
+    },
+    "BackendCapabilities": {
+      "type": "object",
+      "properties": {
+        "maxImagesPerRequest": {
+          "type": "number"
+        },
+        "maxImageBytes": {
+          "type": "number"
+        },
+        "maxContextTokens": {
+          "type": "number"
+        }
+      },
+      "required": [
+        "maxImagesPerRequest",
+        "maxImageBytes",
+        "maxContextTokens"
+      ],
+      "additionalProperties": false
+    }
+  }
+}

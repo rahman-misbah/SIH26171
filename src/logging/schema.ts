@@ -53,6 +53,8 @@ export type ReasonCode =
   | 'model_load_failed'
   | 'egress_blocked'
   | 'private_host' // M9: §6.2.2 fetch fallback refused a private/intranet host
+  | 'model_override_unknown' // M11: the model settings name a provider id that doesn't exist (ignored)
+  | 'backend_version_unsupported' // M11: an http backend answered 426 to schema_version (§12.3)
   | 'unknown';
 
 export interface LogRecord {

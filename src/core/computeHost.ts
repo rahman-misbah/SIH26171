@@ -6,12 +6,13 @@
 
 import { assembleObservation, createAgentLoop, prepareObservationImages } from '@/agent';
 import { configureBackendDeps, getBackend, getBackendSettings } from '@/backend';
+import type { BackendCapabilities } from '@/backend';
 import { detectDevice } from '@/hw';
 import { createImagePipeline, decodeImage, fetchImage, hashPixels, IdbImageCache, redactAndEncode, reencodeJpeg, SendableImageStore } from '@/image';
 import type { ImagePipeline } from '@/image';
 import { createLogger, IdbSink, ReasonCodeError } from '@/logging';
 import type { LogRecord, RuntimeLogger, SessionRecord } from '@/logging';
-import { configureModelDeps, getActiveModelId, getModel } from '@/models';
+import { configureModelDeps, getActiveModelId, getModel, getModelSettings } from '@/models';
 import { onComputeHostRequest } from '@/platform';
 import type { MessageMap, Platform } from '@/platform';
 import type { SkeletonNode } from '@/dom/types';
@@ -55,9 +56,19 @@ function createHostImagePipeline(logger: RuntimeLogger): ImagePipeline {
   });
 }
 
+// §12.3 (M11): a backend may only learn its capabilities in init() --
+// HttpAgentBackend asks its server -- so init() runs before they are read.
+// If init fails, the backend's pre-init capabilities apply (for http: no
+// images), which fails closed; agentDecide reports the init failure itself.
+async function capabilitiesOf(backend_id: string): Promise<BackendCapabilities> {
+  const backend = getBackend(backend_id);
+  await backend.init().catch(() => undefined);
+  return backend.capabilities;
+}
+
 // §14.3: this step's sendable images, selected and sized for `backend_id`.
-function imagesForStep(session_id: string, backend_id: string, skeleton: SkeletonNode[]) {
-  return prepareObservationImages(skeleton, sendableImages.forSession(session_id), getBackend(backend_id).capabilities, reencodeJpeg);
+async function imagesForStep(session_id: string, backend_id: string, skeleton: SkeletonNode[]) {
+  return prepareObservationImages(skeleton, sendableImages.forSession(session_id), await capabilitiesOf(backend_id), reencodeJpeg);
 }
 
 function createDispatch(logger: RuntimeLogger) {
@@ -149,7 +160,7 @@ function createDispatch(logger: RuntimeLogger) {
         // One lookup per observation: this step's sendable set starts empty.
         sendableImages.beginObservation(req.session_id);
         const results = await images.lookup({ session_id: req.session_id, origin: req.origin }, req.images);
-        return { results, send_budget: getBackend(req.backend_id).capabilities.maxImagesPerRequest };
+        return { results, send_budget: (await capabilitiesOf(req.backend_id)).maxImagesPerRequest };
       }
 
       case 'imageProcess': {
@@ -160,6 +171,21 @@ function createDispatch(logger: RuntimeLogger) {
       case 'logRecord': {
         logger.record(payload as LogRecord);
         return {};
+      }
+
+      case 'e2eFaceDetect': {
+        // Test builds only; everywhere else this is an unknown request.
+        if (!__EDWARD_E2E__) throw new Error(`unknown request type: ${type}`);
+        const req = payload as MessageMap['request']['e2eFaceDetect']['request'];
+        const bitmap = await decodeImage(new Blob([req.png], { type: 'image/png' }));
+        try {
+          const face = await getModel('face');
+          const t0 = performance.now();
+          const faces = await face.detect({ bitmap });
+          return { faces, duration_ms: performance.now() - t0 };
+        } finally {
+          bitmap.close();
+        }
       }
 
       default:
@@ -183,6 +209,7 @@ export async function bootstrapComputeHost(platform: Platform): Promise<void> {
 
   const device = await detectDevice(platform.name, __EDWARD_FORCE_COMPUTE__ ?? undefined);
   const backendSettings = await getBackendSettings(platform.settings);
+  const modelSettings = await getModelSettings(platform.settings);
 
   const session_id = crypto.randomUUID();
   const session: SessionRecord = {
@@ -199,7 +226,7 @@ export async function bootstrapComputeHost(platform: Platform): Promise<void> {
   // getModel()'s factories (models.config.ts) need these but can't receive
   // them synchronously through getModel(capability) itself (§9.4), same
   // reasoning as configureBackendDeps.
-  configureModelDeps({ compute: device.compute, assetUrl: platform.assetUrl, logger, session_id });
+  configureModelDeps({ compute: device.compute, assetUrl: platform.assetUrl, logger, session_id, overrides: modelSettings.overrides });
 
   // §15 warm start. Not awaited: requests are already being dispatched, and
   // one that arrives mid-warm-up shares the same getModel() load promise.

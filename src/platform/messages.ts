@@ -10,6 +10,7 @@ import type { ActionResult } from '@/agent/schema';
 import type { ContentField, ContentUnit, SkeletonNode } from '@/dom/types';
 import type { ImageRef, LookupResult, ProcessResult } from '@/image/pipeline';
 import type { LogRecord } from '@/logging/schema';
+import type { Box, Bucket } from '@/models/capabilities';
 
 export interface RequestMessageMap {
   // M3 infrastructure smoke test (§4.3.1 round trip) and, via the optional
@@ -97,6 +98,14 @@ export interface RequestMessageMap {
   logRecord: {
     request: LogRecord;
     response: Record<string, never>;
+  };
+  // Test-only (M11, tests/bench/faceRecall.spec.ts): the active face
+  // detector's raw boxes for one image (a PNG, like imageProcess), so recall
+  // can be measured on the detector alone -- in the full pipeline, OCR
+  // redactions also cover faces. Answered only in __EDWARD_E2E__ builds.
+  e2eFaceDetect: {
+    request: { png: ArrayBuffer };
+    response: { faces: { box: Box; confidence: Bucket }[]; duration_ms: number };
   };
 }
 

@@ -16,6 +16,8 @@ Reading the tables:
   the op's own time.
 - `model.load`/`model.warmup` are one-off startup costs (§15 warm start), paid before the first
   task, not per observation.
+- `Face recall, …` sections (M11) come from `npm run bench:faces -- --label "<machine>" [--compute wasm|webgpu]`:
+  recall of each face provider on a synthetic group photo, switched through the model setting only.
 
 ## Dev laptop (i5-10210U, UHD 620 + MX230, Fedora) — 2026-09-24
 
@@ -48,3 +50,25 @@ WebGPU adapter: intel / gen-9
 | `ner/gravitee-bert-small-pii` | 4216 (wasm) | 5837 (webgpu) |
 | `ocr/tesseract-eng-lstm` | 4581 (wasm) | 6895 (wasm) |
 | `qr/zxing-wasm` | 471 (wasm) | 486 (wasm) |
+
+## Face recall, dev laptop (wasm) — 2026-09-25
+
+tests/fixtures/assets/face-recall.png (1024x576): 18 synthetic faces, two per size. The detector alone is
+measured: a face is found when a detected box is centred inside it with IoU >= 0.2. False positives are
+detections that matched no face. Detect ms is the median of 3 warm calls. The model setting was the only change.
+
+| Provider | Loaded | Compute | Recall | 160 px | 128 px | 96 px | 72 px | 56 px | 40 px | 32 px | 24 px | 20 px | False positives | Detect ms |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| face/blazeface-mediapipe | face/blazeface-mediapipe | wasm | 3/18 (17%) | 2/2 | 1/2 | 0/2 | 0/2 | 0/2 | 0/2 | 0/2 | 0/2 | 0/2 | 1 | 32 |
+| face/scrfd-2.5g | face/scrfd-2.5g | wasm | 18/18 (100%) | 2/2 | 2/2 | 2/2 | 2/2 | 2/2 | 2/2 | 2/2 | 2/2 | 2/2 | 0 | 772 |
+
+## Face recall, dev laptop (webgpu) — 2026-09-25
+
+tests/fixtures/assets/face-recall.png (1024x576): 18 synthetic faces, two per size. The detector alone is
+measured: a face is found when a detected box is centred inside it with IoU >= 0.2. False positives are
+detections that matched no face. Detect ms is the median of 3 warm calls. The model setting was the only change.
+
+| Provider | Loaded | Compute | Recall | 160 px | 128 px | 96 px | 72 px | 56 px | 40 px | 32 px | 24 px | 20 px | False positives | Detect ms |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| face/blazeface-mediapipe | face/blazeface-mediapipe | webgpu | 4/18 (22%) | 2/2 | 2/2 | 0/2 | 0/2 | 0/2 | 0/2 | 0/2 | 0/2 | 0/2 | 1 | 21 |
+| face/scrfd-2.5g | face/scrfd-2.5g | webgpu | 18/18 (100%) | 2/2 | 2/2 | 2/2 | 2/2 | 2/2 | 2/2 | 2/2 | 2/2 | 2/2 | 0 | 132 |

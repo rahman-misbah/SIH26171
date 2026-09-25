@@ -3,9 +3,10 @@
 // two real `llm:*` entries -- no rework of getBackend()/registry.ts itself.
 // Adding a new LLM vendor (§12.5) needs only a new src/backend/llm/clients/
 // file plus one more entry here; nothing here ever branches on a backend
-// *kind* beyond 'llm'/'http'/'mock'.
+// *kind* beyond 'llm'/'http'/'mock'. M11 adds 'http:custom' (§12.3).
 
 import { getBackendDeps, tryGetBackendDeps } from './deps';
+import { HttpAgentBackend } from './http/backend';
 import { LlmAgentBackend } from './llm/backend';
 import { createGroqClient, GROQ_CAPABILITIES } from './llm/clients/groq';
 import { createOpenAiCompatibleClient } from './llm/clients/openaiCompatible';
@@ -77,5 +78,13 @@ export const backendFactories: Record<string, () => AgentBackend> = {
           capabilities: OPENAI_COMPATIBLE_DEFAULT_CAPABILITIES,
         });
       },
+    }),
+
+  // §12.3: a custom agent server speaking the Edward wire protocol. Its
+  // capabilities come from the server in init() (http/backend.ts).
+  'http:custom': () =>
+    new HttpAgentBackend({
+      logger: getBackendDeps().logger,
+      loadConfig: async () => (await getBackendSettings(getBackendDeps().settings)).http,
     }),
 };

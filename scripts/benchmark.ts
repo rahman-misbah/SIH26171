@@ -62,7 +62,7 @@ for (const compute of paths) {
     continue;
   }
   console.log(`\n=== ${compute}: replay ===`);
-  if (!run('npx', ['playwright', 'test', '-c', 'playwright.bench.config.ts'], env) || !existsSync(out)) {
+  if (!run('npx', ['playwright', 'test', '-c', 'playwright.bench.config.ts', 'tests/bench/benchmark.spec.ts'], env) || !existsSync(out)) {
     console.error(`${compute}: benchmark run failed, skipping`);
     continue;
   }

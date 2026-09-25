@@ -1,4 +1,6 @@
-// §8: BlazeFace's raw detection score -> bucket. Face boxes are redacted
+// §8: a face detector's raw score -> bucket. Shared by BlazeFace and SCRFD
+// (M11): both score in 0..1 and both reference implementations use 0.5 as
+// their default cut-off, so the same edges mean the same thing for each. Face boxes are redacted
 // whatever their bucket (§6.4.1, fail-closed); the bucket only exists so the
 // logs can show how confident detections were, for threshold tuning (§8.3).
 

@@ -1,8 +1,13 @@
 // §12.4: backend/provider selection UI. Custom (openai-compatible) base
-// URLs need a runtime host permission grant (§12.4, §4.3.8) -- Groq's fixed
-// host is already covered by the manifest's static host_permissions.
+// URLs and custom agent server endpoints (M11, §12.3) need a runtime host
+// permission grant (§12.4, §4.3.8) -- Groq's fixed host is already covered
+// by the manifest's static host_permissions. M11 also adds the §9.4 model
+// override (face tier).
 
-import { getBackendSettings, setBackendSettings } from '@/backend';
+import { getBackendSettings, parseHttpEndpoint, setBackendSettings } from '@/backend';
+// The settings module directly, not '@/models': the barrel also pulls in the
+// registry and every provider, which this page never uses.
+import { getModelSettings, setModelSettings } from '@/models/settings';
 import { getPlatform } from '@/platform';
 
 const platform = getPlatform();
@@ -13,6 +18,9 @@ const groqModelInput = document.getElementById('groq-model') as HTMLInputElement
 const oacBaseUrlInput = document.getElementById('oac-base-url') as HTMLInputElement;
 const oacKeyInput = document.getElementById('oac-key') as HTMLInputElement;
 const oacModelInput = document.getElementById('oac-model') as HTMLInputElement;
+const httpEndpointInput = document.getElementById('http-endpoint') as HTMLInputElement;
+const httpTokenInput = document.getElementById('http-token') as HTMLInputElement;
+const faceModelSelect = document.getElementById('face-model') as HTMLSelectElement;
 const saveButton = document.getElementById('save') as HTMLButtonElement;
 const statusEl = document.getElementById('status') as HTMLDivElement;
 
@@ -24,16 +32,35 @@ async function load(): Promise<void> {
   oacBaseUrlInput.value = settings.llm['openai-compatible']?.baseUrl ?? '';
   oacKeyInput.value = settings.llm['openai-compatible']?.apiKey ?? '';
   oacModelInput.value = settings.llm['openai-compatible']?.model ?? '';
+  httpEndpointInput.value = settings.http?.endpoint ?? '';
+  httpTokenInput.value = settings.http?.token ?? '';
+  faceModelSelect.value = (await getModelSettings(platform.settings)).overrides.face ?? '';
 }
 
 saveButton.addEventListener('click', () => {
   void (async () => {
     statusEl.textContent = '';
 
+    // permissions.request() only prompts when called before any other
+    // await in the click handler (CLAUDE.md browser quirks), so each branch
+    // calls it first.
     if (backendSelect.value === 'llm:openai-compatible' && oacBaseUrlInput.value.trim()) {
       const granted = await platform.requestHostPermission(new URL(oacBaseUrlInput.value.trim()).origin + '/*');
       if (!granted) {
         statusEl.textContent = 'Host permission for that URL was not granted -- backend will not start.';
+      }
+    } else if (backendSelect.value === 'http:custom') {
+      const endpoint = parseHttpEndpoint(httpEndpointInput.value);
+      if (!endpoint) {
+        statusEl.textContent = 'The endpoint must be an HTTPS URL (or http://localhost / http://127.0.0.1) with no query or credentials.';
+        return;
+      }
+      // Port-less pattern: match patterns without a port match every port,
+      // and the manifest's optional hosts are declared that way.
+      const { protocol, hostname } = new URL(endpoint);
+      const granted = await platform.requestHostPermission(`${protocol}//${hostname}/*`);
+      if (!granted) {
+        statusEl.textContent = 'Host permission for that endpoint was not granted -- backend will not start.';
       }
     }
 
@@ -47,6 +74,10 @@ saveButton.addEventListener('click', () => {
           model: oacModelInput.value || undefined,
         },
       },
+      http: httpEndpointInput.value.trim() ? { endpoint: httpEndpointInput.value.trim(), token: httpTokenInput.value || undefined } : undefined,
+    });
+    await setModelSettings(platform.settings, {
+      overrides: faceModelSelect.value ? { face: faceModelSelect.value } : {},
     });
 
     statusEl.textContent = statusEl.textContent || 'Saved.';

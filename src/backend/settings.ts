@@ -13,10 +13,16 @@ export interface LlmProviderSettings {
   baseUrl?: string; // required for 'openai-compatible'; groq's endpoint is fixed
 }
 
+export interface HttpBackendSettings {
+  endpoint: string; // §12.4: HTTPS, or http://localhost for development (http/endpoint.ts)
+  token?: string; // optional Bearer token (§12.7)
+}
+
 export interface BackendSettings {
-  // 'mock' | 'llm:groq' | 'llm:openai-compatible' -- matches backends.config.ts's keys.
+  // 'mock' | 'llm:groq' | 'llm:openai-compatible' | 'http:custom' -- matches backends.config.ts's keys.
   selectedBackendId: string;
   llm: Partial<Record<LlmProvider, LlmProviderSettings>>;
+  http?: HttpBackendSettings; // M11, §12.3
 }
 
 const STORAGE_KEY = 'edward.backendSettings';

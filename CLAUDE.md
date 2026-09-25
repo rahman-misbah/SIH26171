@@ -15,6 +15,8 @@ Browser extension that acts as a privacy firewall for browser agents: it extract
 - `npm run test:e2e` — Playwright (Chromium, unpacked extension)
 - `npm run fetch-models` — downloads tier-1 model weights into `public/models/` (git-ignored)
 - `npm run bench -- --label "<machine>"` — WASM vs WebGPU benchmark over the fixtures, written to `docs/BENCHMARKS.md`
+- `npm run bench:faces -- --label "<machine>" [--compute wasm|webgpu]` — face recall per provider (BlazeFace vs SCRFD), written to `docs/BENCHMARKS.md`
+- `npm run wire-schema` — regenerates `docs/wire/*.schema.json` from the wire types (a unit test fails when they're stale)
 - `npm run serve-fixtures` — fixture pages on :8123/:8124 for the manual browser checklist (`docs/BROWSER_CHECKLIST.md`)
 
 ## Non-negotiables (SPEC §2, §20)
@@ -75,3 +77,4 @@ Browser extension that acts as a privacy firewall for browser agents: it extract
 - Firefox stops an idle MV3 event page after ~30 s, taking its model workers with it. MediaPipe's 60 s metrics timer never fires in a short session, so `egress_blocked` rows only show up if the page is kept busy past 60 s (checklist F10). Warm start reruns on every wake.
 - WebGPU in Chrome on Linux needs `--enable-unsafe-webgpu --enable-features=Vulkan` for a real adapter. `--enable-unsafe-webgpu` alone gives SwiftShader, a CPU emulator that detection would count as a GPU.
 - Firefox resolves test names to localhost with the pref `network.dns.localDomains=xo.edward.test`, its counterpart to Chromium's `--host-resolver-rules` (docs/BROWSER_CHECKLIST.md).
+- Under Playwright, `chrome.runtime.reload()` from the service worker closes the whole browser, even with a tab open. A test that needs a setting in place when the compute host starts (e.g. the model override) writes storage, closes the context and relaunches on the same profile: `launchExtensionContext(userDataDir)` in `tests/e2e/fixtures.ts`.

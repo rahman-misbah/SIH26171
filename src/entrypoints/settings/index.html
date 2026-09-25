@@ -46,6 +46,7 @@
         <option value="mock">Mock (no network, records observations)</option>
         <option value="llm:groq">Groq</option>
         <option value="llm:openai-compatible">Self-hosted / OpenAI-compatible</option>
+        <option value="http:custom">Custom agent server (Edward wire protocol)</option>
       </select>
 
       <fieldset id="groq-fields">
@@ -64,6 +65,25 @@
         <input id="oac-key" type="password" autocomplete="off" />
         <label for="oac-model">Model</label>
         <input id="oac-model" type="text" />
+      </fieldset>
+
+      <fieldset id="http-fields">
+        <legend>Custom agent server</legend>
+        <label for="http-endpoint">Endpoint (HTTPS, or http://localhost for development)</label>
+        <input id="http-endpoint" type="text" placeholder="https://your-server/edward" />
+        <label for="http-token">Bearer token (optional)</label>
+        <input id="http-token" type="password" autocomplete="off" />
+      </fieldset>
+
+      <fieldset id="model-fields">
+        <legend>On-device models</legend>
+        <label for="face-model">Face detection</label>
+        <select id="face-model">
+          <option value="">Automatic (SCRFD on a GPU, BlazeFace otherwise)</option>
+          <option value="face/scrfd-2.5g">SCRFD-2.5G (tier 2, better on small faces, slower without a GPU)</option>
+          <option value="face/blazeface-mediapipe">BlazeFace (tier 1, fastest)</option>
+        </select>
+        <label>Model changes apply the next time Edward starts (reload the extension or restart the browser).</label>
       </fieldset>
 
       <button id="save" type="button">Save</button>

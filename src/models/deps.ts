@@ -7,6 +7,7 @@
 // the module-singleton pattern src/backend/deps.ts already uses.
 
 import type { ComputeTarget } from '@/hw/types';
+import type { Capability } from './capabilities';
 import type { RuntimeLogger } from '@/logging';
 
 export interface ModelDeps {
@@ -17,6 +18,9 @@ export interface ModelDeps {
   // (src/core/computeHost.ts) -- getModel() reports each load against it via
   // logger.recordModelLoad(), not against any per-task agent session_id.
   session_id: string;
+  // §9.4 user override (M11): provider id per capability, from the model
+  // settings (settings.ts). Read once at compute-host start.
+  overrides?: Partial<Record<Capability, string>>;
 }
 
 let deps: ModelDeps | undefined;

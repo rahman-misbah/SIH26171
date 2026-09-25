@@ -10,10 +10,18 @@ export type Action =
   | { type: 'scroll'; direction: 'up' | 'down' }
   | { type: 'scroll_to'; node_id: string }
   | { type: 'navigate'; url: string }
-  | { type: 'wait'; ms: number };
+  | {
+      type: 'wait';
+      /** @maximum 3000 */
+      ms: number;
+    };
 
+// The JSDoc limits below end up in docs/wire/*.schema.json (§12.3, M11);
+// they must equal the MAX_* constants (tests/unit/scripts/wireSchema.test.ts).
 export interface AgentResponse {
+  /** @maxLength 200 */
   thought: string; // <= MAX_THOUGHT_LENGTH chars, shown in overlay, kept in history
+  /** @maxItems 3 */
   actions: Action[]; // <= MAX_ACTIONS_PER_STEP
   done: boolean;
   answer?: string; // tokens in it are resolved only for on-screen display, never sent anywhere

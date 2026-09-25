@@ -1,5 +1,6 @@
-import { MOCK_SCRIPT_STORAGE_KEY } from '@/backend';
+import { MOCK_SCRIPT_STORAGE_KEY, setBackendSettings, type BackendSettings } from '@/backend';
 import { attachAgentSession, observePage } from '@/dom';
+import { readPixels } from '@/dom/readPixels';
 import { getPlatform } from '@/platform';
 
 export default defineContentScript({
@@ -70,6 +71,26 @@ export default defineContentScript({
             void platform.settings.set(MOCK_SCRIPT_STORAGE_KEY, JSON.parse(raw)).then(() => {
               delete document.documentElement.dataset.edwardE2eSeedScript;
             });
+          } else if (mutation.attributeName === 'data-edward-e2e-seed-backend') {
+            // M11: tests/e2e/httpBackend.spec.ts selects the http backend and
+            // its mock server's endpoint. Removed once written, like the
+            // script seed above.
+            const raw = document.documentElement.dataset.edwardE2eSeedBackend;
+            if (raw === undefined) continue;
+            void setBackendSettings(platform.settings, JSON.parse(raw) as BackendSettings).then(() => {
+              delete document.documentElement.dataset.edwardE2eSeedBackend;
+            });
+          } else if (mutation.attributeName === 'data-edward-e2e-face-detect') {
+            // M11: tests/bench/faceRecall.spec.ts reads the face detector's
+            // raw boxes for the page's first image (e2eFaceDetect).
+            if (document.documentElement.dataset.edwardE2eFaceDetect === undefined) continue;
+            delete document.documentElement.dataset.edwardE2eFaceDetect;
+            const img = document.images[0];
+            void (async () => {
+              const read = img ? await readPixels(img) : undefined;
+              const result = read?.ok ? await platform.transport.request('e2eFaceDetect', { png: read.png }) : { error: 'unreadable' };
+              document.documentElement.dataset.edwardE2eFaceBoxes = JSON.stringify(result);
+            })();
           } else if (mutation.attributeName === 'data-edward-e2e-start-task') {
             const task = document.documentElement.dataset.edwardE2eStartTask;
             if (task === undefined) continue;
@@ -79,7 +100,7 @@ export default defineContentScript({
         }
       }).observe(document.documentElement, {
         attributes: true,
-        attributeFilter: ['data-edward-e2e-seed-script', 'data-edward-e2e-start-task'],
+        attributeFilter: ['data-edward-e2e-seed-script', 'data-edward-e2e-seed-backend', 'data-edward-e2e-face-detect', 'data-edward-e2e-start-task'],
       });
     }
   },
