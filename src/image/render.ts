@@ -8,6 +8,7 @@ import type { Box } from '@/models/capabilities';
 import { fitWithin, MAX_OUTPUT_SIDE } from './downscale';
 import type { FitStep } from './fitBytes';
 import { sha256Hex } from './imgId';
+import { encodeJpeg } from './jpegEncoder';
 import { redactBoxes } from './redact';
 
 // JPEG quality for the redacted output (§6.4.7: "JPEG/WebP"). 0.85 keeps
@@ -50,7 +51,7 @@ export async function redactAndEncode(image: ImageBitmap, boxes: Box[]): Promise
   const size = fitWithin(image.width, image.height, MAX_OUTPUT_SIDE);
   const out = new OffscreenCanvas(size.w, size.h);
   context2d(out).drawImage(full, 0, 0, size.w, size.h);
-  return { blob: await out.convertToBlob({ type: 'image/jpeg', quality: JPEG_QUALITY }), painted };
+  return { blob: await encodeJpeg(out, JPEG_QUALITY), painted };
 }
 
 // §14.3: one step of the fit-to-maxImageBytes loop (fitBytes.ts). Input is
@@ -62,7 +63,7 @@ export async function reencodeJpeg(redacted: Blob, step: FitStep): Promise<Blob>
     const h = Math.max(1, Math.round(image.height * step.scale));
     const out = new OffscreenCanvas(w, h);
     context2d(out).drawImage(image, 0, 0, w, h);
-    return await out.convertToBlob({ type: 'image/jpeg', quality: step.quality });
+    return await encodeJpeg(out, step.quality);
   } finally {
     image.close();
   }

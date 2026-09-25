@@ -20,7 +20,9 @@ export interface StaticServer {
   close: () => Promise<void>;
 }
 
-export async function startStaticServer(root: string): Promise<StaticServer> {
+// `port` 0 (the default) picks a free one; scripts/serve-fixtures.ts passes
+// fixed ports so the manual browser checklist can use stable URLs.
+export async function startStaticServer(root: string, port = 0): Promise<StaticServer> {
   const server = http.createServer((req, res) => {
     void (async () => {
       try {
@@ -40,10 +42,10 @@ export async function startStaticServer(root: string): Promise<StaticServer> {
       }
     })();
   });
-  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
-  const { port } = server.address() as AddressInfo;
+  await new Promise<void>((resolve) => server.listen(port, '127.0.0.1', resolve));
+  const address = server.address() as AddressInfo;
   return {
-    url: `http://127.0.0.1:${port}/`,
+    url: `http://127.0.0.1:${address.port}/`,
     close: () => {
       // The browser keeps its keep-alive socket open, so a plain close()
       // would hang waiting for a connection nothing is going to end.

@@ -169,6 +169,11 @@ export function createChromiumPlatform(): Platform {
     async requestHostPermission(origin: string): Promise<boolean> {
       return browser.permissions.request({ origins: [origin] });
     },
+    async ensureSiteAccess(): Promise<boolean> {
+      // Checks only: <all_urls> isn't an optional permission on Chromium, so
+      // it can't be requested -- the user changes it in Chrome's site access UI.
+      return browser.permissions.contains({ origins: ['<all_urls>'] });
+    },
     assetUrl(path: string): string {
       // WXT's generated `getURL` overloads only accept known entrypoint pages;
       // `assetUrl` must also resolve arbitrary bundled paths (e.g. future

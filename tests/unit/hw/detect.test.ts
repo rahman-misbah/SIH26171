@@ -74,4 +74,37 @@ describe('detectDevice', () => {
     expect(profile.hardwareConcurrency).toBe(12);
     expect(profile.browser).toBe('chromium');
   });
+
+  // M10: benchmark builds force one compute path so a single machine can
+  // produce both columns of the WebGPU-vs-WASM table (docs/BENCHMARKS.md).
+  describe('forced compute (benchmark builds only)', () => {
+    const adapter = { requestAdapter: () => Promise.resolve({}) };
+
+    it('forces wasm even when an adapter is available, and flags the profile', async () => {
+      stubNavigator({ gpu: adapter });
+      const profile = await detectDevice('chromium', 'wasm');
+      expect(profile.compute).toBe('wasm');
+      expect(profile.gpu.available).toBe(true);
+      expect(profile.compute_forced).toBe(true);
+    });
+
+    it('forces webgpu only when a real adapter exists', async () => {
+      stubNavigator({ gpu: adapter });
+      const profile = await detectDevice('chromium', 'webgpu');
+      expect(profile.compute).toBe('webgpu');
+      expect(profile.compute_forced).toBe(true);
+    });
+
+    it('fails closed to wasm when webgpu is forced without an adapter', async () => {
+      stubNavigator({});
+      const profile = await detectDevice('chromium', 'webgpu');
+      expect(profile.compute).toBe('wasm');
+      expect(profile.compute_forced).toBeUndefined();
+    });
+
+    it('leaves the profile unflagged without a force', async () => {
+      stubNavigator({ gpu: adapter });
+      expect((await detectDevice('chromium')).compute_forced).toBeUndefined();
+    });
+  });
 });

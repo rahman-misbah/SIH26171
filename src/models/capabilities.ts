@@ -7,17 +7,29 @@ export type Box = { x: number; y: number; w: number; h: number }; // image pixel
 
 export type ImageInput = { bitmap: ImageBitmap } | { data: ImageData };
 
+// M10: optional per-call hooks for pooled detectors. `onQueueWait` receives
+// how long the call waited for a free worker (ms), so the caller can log it
+// as `queue_ms` separately from inference time (§9.6 tuning).
+export interface DetectOptions {
+  onQueueWait?: (ms: number) => void;
+}
+
+// `poolSize` (M10): how many workers back a pooled detector, so warm start
+// (core/warmStart.ts) can warm each one. Omitted = one.
 export interface FaceDetector {
-  detect(img: ImageInput): Promise<{ box: Box; confidence: Bucket }[]>;
+  readonly poolSize?: number;
+  detect(img: ImageInput, options?: DetectOptions): Promise<{ box: Box; confidence: Bucket }[]>;
 }
 
 // Word-level OCR output (§9.5: Tesseract.js `blocks: true`).
 export interface OcrEngine {
-  read(img: ImageInput): Promise<{ text: string; box: Box; line: number; confidence: Bucket }[]>;
+  readonly poolSize?: number;
+  read(img: ImageInput, options?: DetectOptions): Promise<{ text: string; box: Box; line: number; confidence: Bucket }[]>;
 }
 
 export interface QrDetector {
-  detect(img: ImageInput): Promise<{ box: Box; confidence: Bucket }[]>;
+  readonly poolSize?: number;
+  detect(img: ImageInput, options?: DetectOptions): Promise<{ box: Box; confidence: Bucket }[]>;
 }
 
 export interface PiiNer {

@@ -37,6 +37,9 @@ export const blazefaceMediapipe: ModelProvider<'face'> = {
   tier: 1,
   requires: {}, // CPU (wasm) everywhere; WebGL delegate when a GPU is available
   approxDownloadMB: 12, // ~0.23 MB model + ~12 MB MediaPipe vision wasm
+  // No effectiveCompute: follows the global decision. Note MediaPipe's GPU
+  // delegate is WebGL, not WebGPU -- so 'webgpu' logged for this model means
+  // "the GPU path" (docs/BENCHMARKS.md says so next to the table).
 
   async load(ctx): Promise<FaceDetector> {
     const init = {
@@ -60,8 +63,9 @@ export const blazefaceMediapipe: ModelProvider<'face'> = {
     const pool = createWorkerPool(workers);
 
     return {
-      detect(img) {
-        return pool.run((worker) => worker.detect(toImage(img)));
+      poolSize: pool.size,
+      detect(img, options) {
+        return pool.run((worker) => worker.detect(toImage(img)), options?.onQueueWait);
       },
     };
   },

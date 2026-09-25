@@ -140,15 +140,15 @@ Done when:
 - [x] Non-PII text in images stays visible
 - [x] p50/p95 per image op recorded
 
-## M10 — Firefox + latency pass · `todo`
+## M10 — Firefox + latency pass · `done`
 **Spec:** §4, §15 · **Estimate:** 1 day
 
 - Full Firefox pass (manual checklist). Edge smoke test.
 - Warm start, benchmark script over fixtures, tuning from logger numbers.
 
 Done when:
-- [ ] Observe + one action works in Chrome, Edge, Firefox
-- [ ] Benchmark table (per op, WebGPU vs WASM) saved to `docs/BENCHMARKS.md`
+- [x] Observe + one action works in Chrome, Edge, Firefox (Edge cut, see the M10 Log entry)
+- [x] Benchmark table (per op, WebGPU vs WASM) saved to `docs/BENCHMARKS.md`
 
 ## M11 — Extensibility demo (optional) · `todo`
 **Spec:** §9.5, §12.3 · **Estimate:** ½–1 day
@@ -320,3 +320,42 @@ Done when:
   - **Latency:** start with `image.redact` (constant ~1 s; see Noticed 1), then OCR pool size and warm start. §15's warm start (load all four models plus one warm-up inference at compute-host start) doesn't exist yet: models load lazily on the first observation.
   - **Firefox:** the Gecko transport uses structured clone, so `Uint8Array`/`ArrayBuffer` should pass through untouched; verify. Tesseract's bootstrap relies on Vite emitting classic IIFE workers; check the Firefox build does the same. Verify that `--host-resolver-rules`-style e2e tricks aren't needed for manual Firefox testing: serve fixtures from a non-private hostname, or expect cross-origin images to be `unreadable`.
   - **Benchmark:** `tests/e2e/latency.spec.ts` already produces per-op p50/p95 for text and image ops, and can seed the §15 benchmark script and `docs/BENCHMARKS.md`.
+
+### 2026-09-25 — M10 Firefox + latency pass
+- Summary:
+  - **Warm start** (§15, `src/core/warmStart.ts`): at compute-host start, every model loads and every pooled worker gets one warm-up inference (NER first, then face/OCR/QR together), logged as the new op `model.warmup`. Chromium's background creates the offscreen document whenever the service worker starts.
+  - **Latency fixes from logger numbers:** JPEG encoding moved into a Worker (`image/encodeWorker.ts`, `jpegEncoder.ts`); Tesseract gets BMP bytes instead of an OffscreenCanvas (`providers/ocr/bmp.ts`); OCR pool ceiling raised from 2 to 3. Pools log `queue_ms`; providers can report `effectiveCompute` (fixes M9 Noticed 3).
+  - **Benchmark:** `npm run bench -- --label "<machine>"` (`scripts/benchmark.ts`, `benchmarkTable.ts`, `tests/bench/`, `playwright.bench.config.ts`) builds per forced compute (`EDWARD_FORCE_COMPUTE`, e2e builds only), replays the fixtures in Chromium, and writes WASM vs WebGPU p50/p95 to `docs/BENCHMARKS.md`.
+  - **Firefox:** `Platform.ensureSiteAccess()` + popup Start handling (§4.3 item 18); manual checklist `docs/BROWSER_CHECKLIST.md` + `npm run serve-fixtures`; full Firefox pass done (details below).
+- Measurements:
+  - `npm run check` clean; 516/516 unit tests (62 files); e2e 16/16 (Chromium, 2.8 min).
+  - Chromium benchmark (dev laptop, WASM p50/p95 ms): `sanitize.regex` 626/1058, `sanitize.ner` 415/882, `image.ocr` 1055/1355 (queue wait 1/4), `image.redact` 13/54 (was ~1007 in M9), `image.face` 98/175, `image.qr` 161/272, `model.load` 4216/4581. WebGPU (real Intel Gen-9 adapter) was slower than WASM on every GPU-affected row, e.g. `sanitize.ner` 832/1514.
+  - Firefox 156 (wasm): loads zxing 147, face 873, NER 1116, OCR 2049 ms; warm observation ~0.6–1.2 s; first observation after event-page wake ~2.2 s; `image.ocr` p50/p95 161/317.
+- Firefox checklist (Firefox 156; F1–F3 and popup F11 run by the user in `web-ext run`; F4–F12 automated headless via a scratch Marionette script, not committed):
+  - F1 pass: no errors; manifest has `background.scripts`, no `offscreen`.
+  - F2 pass, with a deviation: no site-access prompt, because Firefox 156 grants `<all_urls>` at install.
+  - F3: the deny path can't be reached. With site access turned off in `about:addons`, Start showed no Allow/Don't-allow prompt; Firefox showed "run for this site only" greyed out and the task ran. Likely (not proven) the toolbar click grants per-tab access through `activeTab`. Firefox's own "Run for this visit only" also restores access for one page. The popup's refusal message is untested on Firefox.
+  - F4–F9 pass: 4 warmups, all loads `ok`; no canaries except the by-design public email on `contact`; `iframe_skipped`/`canvas_skipped` markers; faces, PII words and QR redacted in outgoing images, non-PII words readable; 4 sent + 3 `request_limit`; cache hits on reload; cross-origin fetch fallback works (SPEC §4.3 item 16 verified on Firefox), `private_host` refusals logged.
+  - F10 pass: no request to `odml.pa.googleapis.com` or any non-extension host. 3 `egress_blocked` rows only once the event page stayed alive past 60 s (see Deviations).
+  - F11 pass: via the popup and via the e2e hook; the email field filled from the mock's `[PII_EMAIL_1]` (344 ms).
+  - F12 pass: the idle event page was `stopped`; the next observation woke it, with a new session and a second set of loads + warmups.
+  - Edge E1–E4: **cut** (user decision, 2026-09-25), never run; recorded in SPEC §16.
+- Deviations from SPEC:
+  1. **Edge smoke test cut** (§4.4, §18.5): the Done-when item is judged on Chrome + Firefox. SPEC §16.
+  2. **§4.3 item 18:** Firefox 156 grants `<all_urls>` at install, contrary to the M10 plan's premise; the refusal path is kept as a fallback but is unreachable on Firefox 156 (F3). SPEC, CLAUDE.md, the `ensureSiteAccess` comment and the checklist corrected.
+  3. **§9.6 OCR pool:** K = `clamp(hardwareConcurrency / 2, 1, 3)` instead of max 2 (measured: queue-wait p95 ~625 → ~3 ms).
+  4. **§10.3:** `ModelProvider.effectiveCompute` (optional) is what `model.load` logs; benchmark builds can force compute (`__EDWARD_FORCE_COMPUTE__`, `compute_forced` on the profile).
+  5. **§11.1 contract additions:** op `model.warmup`; `LogRecord.queue_ms`; `DetectOptions.onQueueWait` and `poolSize` on the image capability interfaces; `Platform.ensureSiteAccess()`.
+  6. **§15 warm start is staged** (NER, then image models): warming all four at once saturated the CPU for ~10 s and slowed a task started in that window.
+  7. **Browser quirks** (SPEC §4.3 items 17–19, CLAUDE.md): `convertToBlob()` waits ~1 s for idle time in Chromium's offscreen document; Firefox 156 site access at install; WebGPU on Linux Chrome needs `--enable-unsafe-webgpu --enable-features=Vulkan` (SwiftShader otherwise). Also: Firefox stops an idle event page after ~30 s, before MediaPipe's 60 s metrics timer fires, so `egress_blocked` rows only appear if the page stays busy (checklist F10 updated).
+- Noticed (out of scope):
+  1. `<all_urls>` at install was verified only for `web-ext`/temporary installs; an AMO-signed install may differ (check at packaging).
+  2. On `images.html` with all 7 images cached, the first load sent 3 text images + 1 face and the reload sent the 4 faces. Both are within budget, but the selection changes between loads.
+  3. Cold start on Firefox: `sanitize.regex` p95 ~9.2 s on the first page while models were still warming (warm p50 ~240 ms).
+  4. MediaPipe logs "INFO: Created TensorFlow Lite XNNPACK delegate for CPU." via `console.error`: harmless noise.
+  5. On this laptop WebGPU is slower than WASM for NER and face detection; worth re-checking on a machine with a discrete GPU before the slides claim a GPU speed-up.
+  6. Still open from earlier milestones: M8/M9 cache records never pruned (M9 Noticed 5); real-key manual check of the Groq request body with images (M9 Noticed 7); NER redacting "Call" in "Call Priya" (M9 Noticed 4, safe side).
+- Notes for next milestone:
+  - M11 (Extensibility demo) is optional; per the cut order it is the first thing to drop if behind, so decide whether to do it or go to M12.
+  - SCRFD tier-2 face on GPU (M11): the benchmark now reports per-model compute, so the tier-1 vs tier-2 comparison can reuse `npm run bench`. Note that MediaPipe's "GPU" path is WebGL.
+  - Firefox testing: `docs/BROWSER_CHECKLIST.md` + `npm run serve-fixtures`; Firefox resolves `xo.edward.test` via `network.dns.localDomains`. Firefox needs a `browser_specific_settings.gecko.id` and `data_collection_permissions` before any AMO packaging (§4.3 item 13).

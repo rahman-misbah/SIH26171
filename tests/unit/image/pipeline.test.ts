@@ -173,6 +173,20 @@ describe('image pipeline: process (§6.2, §6.4)', () => {
     expect(bitmap.closed).toBe(true);
   });
 
+  it('logs a pooled detector\'s queue wait as queue_ms on its record (M10, §9.6)', async () => {
+    const ocr: OcrEngine = {
+      read: vi.fn(async (_img, options) => {
+        options?.onQueueWait?.(120);
+        return [];
+      }),
+    };
+    const { pipeline, records } = setup({}, { ocr });
+    await pipeline.process(CTX, REF, new ArrayBuffer(4));
+    expect(records.find((r) => r.op === 'image.ocr')?.queue_ms).toBe(120);
+    // A detector that doesn't report a wait leaves the field out.
+    expect(records.find((r) => r.op === 'image.face')?.queue_ms).toBeUndefined();
+  });
+
   it('closes the decoded pixels when done', async () => {
     const { pipeline, bitmap } = setup();
     await pipeline.process(CTX, REF, new ArrayBuffer(4));

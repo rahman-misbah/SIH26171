@@ -1,9 +1,16 @@
 import { defineConfig } from 'wxt';
 
-// WXT defaults Firefox to MV2; the spec (SPEC.md §4.1) assumes MV3 everywhere
-// (Firefox as an MV3 event page), so this is forced explicitly.
+function forcedCompute(): 'webgpu' | 'wasm' | null {
+  const value = process.env.EDWARD_FORCE_COMPUTE;
+  if (process.env.EDWARD_E2E !== '1' || value === undefined || value === '') return null;
+  if (value === 'webgpu' || value === 'wasm') return value;
+  throw new Error(`EDWARD_FORCE_COMPUTE must be 'webgpu' or 'wasm', got '${value}'`);
+}
+
 export default defineConfig({
   srcDir: 'src',
+  // WXT defaults Firefox to MV2; the spec (SPEC.md §4.1) assumes MV3 everywhere
+  // (Firefox as an MV3 event page), so this is forced explicitly.
   manifestVersion: 3,
   manifest: ({ browser }) => ({
     // 'wasm-unsafe-eval' is required by onnxruntime-web / Tesseract.js / zxing-wasm (SPEC §4.3.3).
@@ -33,6 +40,9 @@ export default defineConfig({
       // False (and dead-code-eliminated) for `dev`/`build`; true only when
       // `test:e2e` sets EDWARD_E2E=1, so the real extension never ships it.
       __EDWARD_E2E__: JSON.stringify(process.env.EDWARD_E2E === '1'),
+      // M10 benchmark-only compute override (src/hw/detect.ts). Honoured only
+      // in e2e builds, so a stray env var can't change a real build.
+      __EDWARD_FORCE_COMPUTE__: JSON.stringify(forcedCompute()),
     },
   }),
 });

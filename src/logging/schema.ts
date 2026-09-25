@@ -19,6 +19,7 @@ export type OpName =
   | 'image.cache_miss'
   | 'image.revalidate'
   | 'model.load'
+  | 'model.warmup' // M10: §15 warm-start inference(s) for one capability
   | 'model.downgrade'
   | 'context.assemble'
   | 'backend.decide'
@@ -67,6 +68,9 @@ export interface LogRecord {
   model_id?: string;
   tier?: 1 | 2;
   compute?: 'webgpu' | 'wasm'; // on-device execution target, not the reasoning backend
+  // M10: time a pooled model call waited for a free worker before it ran.
+  // Included in duration_ms; logged apart so §9.6 pool sizes can be tuned.
+  queue_ms?: number;
   counts?: Partial<
     Record<
       'units' | 'spans' | 'faces' | 'words' | 'codes' | 'images' | 'bytes' | 'tokens_in' | 'tokens_out',

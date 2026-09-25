@@ -146,4 +146,36 @@ describe('createWorkerPool (§9.6: bounded pool of long-lived workers)', () => {
     await expect(failing).rejects.toThrow('boom');
     await expect(next).resolves.toBe('only-ok');
   });
+
+  // M10 (§9.6 "tune N from logged timings"): queue wait is reported
+  // separately from the job's own time, so pool size can be tuned.
+  it('reports ~0 queue wait when a worker is free', async () => {
+    const t = 100;
+    const pool = createWorkerPool(['only'], { now: () => t });
+    const waits: number[] = [];
+    await pool.run(async () => {}, (ms) => waits.push(ms));
+    expect(waits).toEqual([0]);
+  });
+
+  it('reports how long a job waited for a busy worker', async () => {
+    let t = 0;
+    const pool = createWorkerPool(['only'], { now: () => t });
+    const gate = deferred<void>();
+    const first = pool.run(() => gate.promise);
+    const waits: number[] = [];
+    const second = pool.run(async () => {}, (ms) => waits.push(ms));
+    await vi.advanceTimersByTimeAsync(0);
+    t = 250;
+    gate.resolve();
+    await Promise.all([first, second]);
+    expect(waits).toEqual([250]);
+  });
+
+  it('a throwing onQueueWait callback never breaks the job', async () => {
+    const pool = createWorkerPool(['only']);
+    const result = pool.run(async () => 'ok', () => {
+      throw new Error('logger down');
+    });
+    await expect(result).resolves.toBe('ok');
+  });
 });

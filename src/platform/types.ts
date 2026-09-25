@@ -46,6 +46,13 @@ export interface Platform {
   onTabPush(handler: (msg: TabPushMessage) => void): void;
   captureVisibleTab?(tabId: number): Promise<Blob>; // optional fallback, rate-limited
   requestHostPermission(origin: string): Promise<boolean>; // for custom backend endpoints (§12.4)
+  // §4.3.8 (M10): content-script site access (the `<all_urls>` match). True
+  // when the content script can run on pages. gecko asks for it (granted at
+  // install on Firefox 156, but revocable in about:addons); chromium only
+  // checks (granted at install, restrictable by the user in Chrome's own UI).
+  // Must be the *first* call in a click handler -- Firefox drops the user
+  // gesture after any await.
+  ensureSiteAccess(): Promise<boolean>;
   assetUrl(path: string): string; // runtime.getURL
   openSettings(): Promise<void>;
 }

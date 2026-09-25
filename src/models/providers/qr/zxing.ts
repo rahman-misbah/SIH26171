@@ -29,6 +29,7 @@ export const zxingQr: ModelProvider<'qr'> = {
   tier: 1,
   requires: {}, // wasm everywhere
   approxDownloadMB: 1, // ~1 MB reader wasm, no model weights
+  effectiveCompute: () => 'wasm', // §10.3: no GPU path in zxing
 
   async load(ctx): Promise<QrDetector> {
     const init = { wasmUrl: ctx.assetUrl('/zxing/zxing_reader.wasm') };
@@ -45,8 +46,9 @@ export const zxingQr: ModelProvider<'qr'> = {
     const pool = createWorkerPool(workers);
 
     return {
-      detect(img) {
-        return pool.run((worker) => worker.detect(toImage(img)));
+      poolSize: pool.size,
+      detect(img, options) {
+        return pool.run((worker) => worker.detect(toImage(img)), options?.onQueueWait);
       },
     };
   },

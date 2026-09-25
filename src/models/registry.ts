@@ -73,10 +73,11 @@ async function loadModel<C extends Capability>(capability: C): Promise<Capabilit
     return fallbackImpl(capability);
   }
 
+  const compute = provider.effectiveCompute?.(deps.compute) ?? deps.compute;
   try {
     const impl = await deps.logger.timed(
       'model.load',
-      { session_id: deps.session_id, model_id: provider.id, tier: provider.tier, compute: deps.compute },
+      { session_id: deps.session_id, model_id: provider.id, tier: provider.tier, compute },
       async () => {
         try {
           return await provider.load({
@@ -95,7 +96,7 @@ async function loadModel<C extends Capability>(capability: C): Promise<Capabilit
       capability,
       model_id: provider.id,
       tier: provider.tier,
-      compute: deps.compute,
+      compute,
     });
     return impl;
   } catch {

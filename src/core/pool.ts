@@ -83,7 +83,14 @@ export interface WorkerPool<W> {
   // Runs `job` on the next free worker. Resolves/rejects with the job's own
   // result -- a failing job never affects other callers, and its worker is
   // returned to the pool either way.
-  run<R>(job: (worker: W) => Promise<R>): Promise<R>;
+  // `onQueueWait` (M10) gets how long the job waited for a free worker, in
+  // ms, just before it starts -- logged as `queue_ms` so §9.6's pool sizes
+  // can be tuned from queueing vs. inference time rather than their sum.
+  run<R>(job: (worker: W) => Promise<R>, onQueueWait?: (ms: number) => void): Promise<R>;
+}
+
+export interface WorkerPoolOptions {
+  now?: () => number; // injectable clock for tests; defaults to performance.now
 }
 
 // §9.6: the concurrency ceiling is the worker count itself -- each worker
@@ -92,7 +99,8 @@ export interface WorkerPool<W> {
 // order, which preserves the caller's §6.7 priority order. The wait queue
 // itself isn't length-capped: its producers are already bounded (one
 // observation's images, dispatched by the content script a few at a time).
-export function createWorkerPool<W>(workers: W[]): WorkerPool<W> {
+export function createWorkerPool<W>(workers: W[], options: WorkerPoolOptions = {}): WorkerPool<W> {
+  const now = options.now ?? (() => performance.now());
   if (workers.length === 0) throw new Error('createWorkerPool needs at least one worker');
   const idle = [...workers];
   const waiting: ((worker: W) => void)[] = [];
@@ -111,9 +119,16 @@ export function createWorkerPool<W>(workers: W[]): WorkerPool<W> {
 
   return {
     size: workers.length,
-    async run<R>(job: (worker: W) => Promise<R>): Promise<R> {
+    async run<R>(job: (worker: W) => Promise<R>, onQueueWait?: (ms: number) => void): Promise<R> {
+      const queuedAt = now();
       const worker = await acquire();
       try {
+        // A metrics callback must never fail the job it measures.
+        try {
+          onQueueWait?.(now() - queuedAt);
+        } catch {
+          // ignored
+        }
         return await job(worker);
       } finally {
         release(worker);

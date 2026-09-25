@@ -10,4 +10,6 @@ export interface DeviceProfile {
   // Fields not exposed by a browser are left undefined, never guessed (§10.2).
   deviceMemoryGB?: number;
   platform?: string;
+  // M10: set only when a benchmark build forced `compute` (§10 override).
+  compute_forced?: true;
 }

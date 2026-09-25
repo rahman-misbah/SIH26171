@@ -18,12 +18,17 @@ import { createWorkerPool } from '@/core/pool';
 import type { ImageInput, OcrEngine } from '@/models/capabilities';
 import type { ModelProvider } from '@/models/provider';
 import { logEgressBlocked } from '../egressGuard';
+import { encodeBmp24 } from './bmp';
 import { flattenBlocks, type FlatWord, type TessBlock } from './flatten';
 
 // §9.6: OCR is the heaviest per-image stage (CPU/wasm only) and each worker
-// holds its own ~15 MB engine, so at most 2 -- half the cores, at least 1.
+// holds its own ~15 MB engine -- half the cores, at least 1, at most 3.
+// M10 raised the ceiling from 2 to 3 (so only 6+ core machines change): on
+// the image fixtures (8 cores, wasm, warm) K=2 left OCR queueing p95 ~625 ms;
+// K=3 removed it (p95 ~3 ms) and cut image.ocr p50 ~1150 -> ~960 ms, with p95
+// unchanged. See docs/BENCHMARKS.md.
 export function ocrWorkerCount(hardwareConcurrency: number): number {
-  return Math.min(2, Math.max(1, Math.floor(hardwareConcurrency / 2)));
+  return Math.min(3, Math.max(1, Math.floor(hardwareConcurrency / 2)));
 }
 
 // A recognition that hasn't answered in this long fails the stage, so the
@@ -48,16 +53,21 @@ function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
   });
 }
 
-// Tesseract.js reads an OffscreenCanvas by encoding it to PNG in its own
-// loader, then ships the bytes to its worker.
-function toCanvas(img: ImageInput): OffscreenCanvas {
-  const source = 'bitmap' in img ? img.bitmap : img.data;
-  const canvas = new OffscreenCanvas(source.width, source.height);
-  const ctx = canvas.getContext('2d');
-  if (!ctx) throw new Error('2d context unavailable');
-  if ('bitmap' in img) ctx.drawImage(img.bitmap, 0, 0);
-  else ctx.putImageData(img.data, 0, 0);
-  return canvas;
+// M10: Tesseract.js gets already-encoded BMP bytes (see bmp.ts). Handing it
+// an OffscreenCanvas made it call convertToBlob() here, which cost ~1 s per
+// image in Chromium's offscreen document.
+function toBmp(img: ImageInput): Blob {
+  let pixels: ImageData;
+  if ('bitmap' in img) {
+    const canvas = new OffscreenCanvas(img.bitmap.width, img.bitmap.height);
+    const ctx = canvas.getContext('2d');
+    if (!ctx) throw new Error('2d context unavailable');
+    ctx.drawImage(img.bitmap, 0, 0);
+    pixels = ctx.getImageData(0, 0, img.bitmap.width, img.bitmap.height);
+  } else {
+    pixels = img.data;
+  }
+  return new Blob([encodeBmp24(pixels.data, pixels.width, pixels.height)], { type: 'image/bmp' });
 }
 
 // Tesseract.js exposes the underlying Web Worker at runtime (`worker.worker`)
@@ -72,6 +82,7 @@ export const tesseractOcr: ModelProvider<'ocr'> = {
   capability: 'ocr',
   tier: 1,
   requires: {}, // CPU/wasm everywhere
+  effectiveCompute: () => 'wasm', // §10.3: Tesseract always reports wasm
   approxDownloadMB: 14, // ~3 MB core wasm + ~11 MB eng traineddata (gz)
 
   async load(ctx): Promise<OcrEngine> {
@@ -106,14 +117,15 @@ export const tesseractOcr: ModelProvider<'ocr'> = {
     const pool = createWorkerPool(workers);
 
     return {
-      read(img) {
+      poolSize: pool.size,
+      read(img, options) {
         return pool.run(async (worker): Promise<FlatWord[]> => {
           const { data } = await withTimeout(
-            worker.recognize(toCanvas(img), {}, { blocks: true, text: false, hocr: false, tsv: false }),
+            worker.recognize(toBmp(img), {}, { blocks: true, text: false, hocr: false, tsv: false }),
             READ_TIMEOUT_MS,
           );
           return flattenBlocks(data.blocks as TessBlock[] | null);
-        });
+        }, options?.onQueueWait);
       },
     };
   },

@@ -20,6 +20,12 @@ export interface ModelProvider<C extends Capability> {
   tier: 1 | 2; // 1 = light, 2 = strong
   requires: { webgpu?: boolean; minMemoryGB?: number };
   approxDownloadMB: number;
+  // M10 (§10.3): the compute this provider actually runs on, given the
+  // global decision -- e.g. Tesseract and zxing are wasm-only, so they
+  // report 'wasm' even on a WebGPU device. Omitted = follows the decision.
+  // Used for model.load / SessionRecord.models, so the WebGPU-vs-WASM
+  // benchmark attributes each model to the right column.
+  effectiveCompute?: (compute: 'webgpu' | 'wasm') => 'webgpu' | 'wasm';
   load(ctx: {
     compute: 'webgpu' | 'wasm';
     assetUrl: (p: string) => string;

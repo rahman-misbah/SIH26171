@@ -7,6 +7,8 @@ export interface OpStats {
   p50: number;
   p95: number;
   count: number;
+  // M10: only for ops whose records carry queue_ms (pooled model calls).
+  queue?: { p50: number; p95: number };
 }
 
 export interface Aggregate {
@@ -22,6 +24,7 @@ function percentile(sortedAscending: number[], p: number): number {
 
 export function aggregate(records: LogRecord[]): Aggregate {
   const durationsByOp = new Map<OpName, number[]>();
+  const queueByOp = new Map<OpName, number[]>();
   let cacheHits = 0;
   let cacheMisses = 0;
   let failClosedCount = 0;
@@ -34,12 +37,22 @@ export function aggregate(records: LogRecord[]): Aggregate {
     const durations = durationsByOp.get(record.op) ?? [];
     durations.push(record.duration_ms);
     durationsByOp.set(record.op, durations);
+    if (record.queue_ms !== undefined) {
+      const queued = queueByOp.get(record.op) ?? [];
+      queued.push(record.queue_ms);
+      queueByOp.set(record.op, queued);
+    }
   }
 
   const perOp: Partial<Record<OpName, OpStats>> = {};
   for (const [op, durations] of durationsByOp) {
     const sorted = [...durations].sort((a, b) => a - b);
     perOp[op] = { p50: percentile(sorted, 0.5), p95: percentile(sorted, 0.95), count: sorted.length };
+    const queued = queueByOp.get(op);
+    if (queued) {
+      const sortedQueue = [...queued].sort((a, b) => a - b);
+      perOp[op].queue = { p50: percentile(sortedQueue, 0.5), p95: percentile(sortedQueue, 0.95) };
+    }
   }
 
   return {

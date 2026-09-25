@@ -17,7 +17,9 @@ async function push(msg: TabPushMessage): Promise<void> {
     const tab = await platform.getActiveTab();
     await platform.sendToTab(tab.tabId, msg);
   } catch {
-    statusEl.textContent = 'No active tab to run on.';
+    // Also what happens right after site access was first granted: a tab
+    // that was already open may not have the content script yet.
+    statusEl.textContent = 'Edward is not running on this page. Reload it and press Start again.';
   }
 }
 
@@ -27,8 +29,17 @@ startButton.addEventListener('click', () => {
     statusEl.textContent = 'Enter a task first.';
     return;
   }
-  statusEl.textContent = 'Started -- see the on-page status.';
-  void push({ type: 'startTask', task });
+  // §4.3.8: without site access the content script can't run, so the agent
+  // doesn't start. Called before any await (Firefox's user-gesture rule).
+  const access = platform.ensureSiteAccess().catch(() => false);
+  void (async () => {
+    if (!(await access)) {
+      statusEl.textContent = 'Edward needs access to websites to run. Allow it and press Start again.';
+      return;
+    }
+    statusEl.textContent = 'Started -- see the on-page status.';
+    await push({ type: 'startTask', task });
+  })();
 });
 
 stopButton.addEventListener('click', () => {

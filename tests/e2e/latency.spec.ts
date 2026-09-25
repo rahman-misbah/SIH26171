@@ -6,34 +6,20 @@
 // available") -- profile.html (already in PAGES) is what triggers real NER.
 
 import path from 'node:path';
-import type { Page } from '@playwright/test';
 import { aggregate } from '../../src/logging';
-import type { LogRecord } from '../../src/logging/schema';
 import { expect, test } from './fixtures';
+import { readLogsFromServiceWorker, waitForWarmStart } from './logs';
 import { startStaticServer } from './staticServer';
 
 const FIXTURES_ROOT = path.resolve(import.meta.dirname, '../fixtures');
 const PAGES = ['profile', 'form', 'comments', 'contact', 'query-links', 'secret-form', 'iframe'] as const;
 
-function readLogRecords(page: Page): Promise<LogRecord[]> {
-  return page.evaluate(
-    () =>
-      new Promise<LogRecord[]>((resolve, reject) => {
-        const openReq = indexedDB.open('edward-logs', 1);
-        openReq.onsuccess = () => {
-          const tx = openReq.result.transaction('records', 'readonly');
-          const getAllReq = tx.objectStore('records').getAll();
-          getAllReq.onsuccess = () => resolve(getAllReq.result as LogRecord[]);
-          getAllReq.onerror = () => reject(getAllReq.error ?? new Error('getAll failed'));
-        };
-        openReq.onerror = () => reject(openReq.error ?? new Error('indexedDB.open failed'));
-      }),
-  );
-}
-
-test('baseline latency for dom.phase_a / dom.phase_b / sanitize.regex', async ({ context, extensionId }) => {
+test('baseline latency for dom.phase_a / dom.phase_b / sanitize.regex', async ({ context }) => {
+  test.setTimeout(180_000);
   const server = await startStaticServer(FIXTURES_ROOT);
   try {
+    // M10: measure warm numbers (§15), not the startup warm-up window.
+    await waitForWarmStart(context);
     const page = await context.newPage();
     for (const name of PAGES) {
       await page.goto(`${server.url}pages/${name}.html`);
@@ -48,10 +34,7 @@ test('baseline latency for dom.phase_a / dom.phase_b / sanitize.regex', async ({
     // path that would only exist for this test.
     await new Promise((resolve) => setTimeout(resolve, 5_500));
 
-    const offscreen = await context.newPage();
-    await offscreen.goto(`chrome-extension://${extensionId}/offscreen.html`);
-    const records = await readLogRecords(offscreen);
-    await offscreen.close();
+    const records = await readLogsFromServiceWorker(context);
 
     const stats = aggregate(records);
     const summary = {
@@ -84,10 +67,11 @@ test('baseline latency for dom.phase_a / dom.phase_b / sanitize.regex', async ({
 const IMAGE_PAGES = ['faces', 'images-text', 'images'] as const;
 const IMAGE_OPS = ['image.acquire', 'image.face', 'image.ocr', 'image.qr', 'image.redact', 'image.cache_hit', 'image.cache_miss', 'context.assemble'] as const;
 
-test('image pipeline latency per op (p50/p95)', async ({ context, extensionId }) => {
-  test.setTimeout(120_000);
+test('image pipeline latency per op (p50/p95)', async ({ context }) => {
+  test.setTimeout(240_000);
   const server = await startStaticServer(FIXTURES_ROOT);
   try {
+    await waitForWarmStart(context);
     const page = await context.newPage();
     for (const pass of [1, 2]) {
       for (const name of IMAGE_PAGES) {
@@ -98,10 +82,7 @@ test('image pipeline latency per op (p50/p95)', async ({ context, extensionId })
     await page.close();
     await new Promise((resolve) => setTimeout(resolve, 5_500));
 
-    const offscreen = await context.newPage();
-    await offscreen.goto(`chrome-extension://${extensionId}/offscreen.html`);
-    const records = await readLogRecords(offscreen);
-    await offscreen.close();
+    const records = await readLogsFromServiceWorker(context);
 
     const stats = aggregate(records);
     const summary = Object.fromEntries(IMAGE_OPS.map((op) => [op, stats.perOp[op]]));

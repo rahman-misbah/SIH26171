@@ -85,6 +85,13 @@ export function createGeckoPlatform(): Platform {
     async requestHostPermission(origin: string): Promise<boolean> {
       return browser.permissions.request({ origins: [origin] });
     },
+    // Not `async`: permissions.request() has to be called synchronously
+    // within the click that triggered it, or Firefox rejects it for lacking a
+    // user gesture. It resolves true straight away, with no prompt, when
+    // access is already granted.
+    ensureSiteAccess(): Promise<boolean> {
+      return browser.permissions.request({ origins: ['<all_urls>'] });
+    },
     assetUrl(path: string): string {
       return (browser.runtime.getURL as (path: string) => string)(path);
     },

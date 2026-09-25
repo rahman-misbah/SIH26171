@@ -132,6 +132,7 @@ interface Platform {
   captureVisibleTab?(tabId: number): Promise<Blob>;   // optional fallback, rate-limited
   // Permissions
   requestHostPermission(origin: string): Promise<boolean>; // for custom backend endpoints (§12.4)
+  ensureSiteAccess(): Promise<boolean>; // as built (M10): content-script site access, §4.3 item 18
   // Assets bundled with the extension
   assetUrl(path: string): string;       // runtime.getURL
   // UI
@@ -158,7 +159,14 @@ Everything else — DOM extraction, sanitization, image pipeline, model registry
 13. **Firefox AMO requirements (not a local-dev blocker)** — Firefox MV3 requires `browser_specific_settings.gecko.id` to sign/submit to AMO, and (since 2025-11-03) `gecko.data_collection_permissions` for new submissions. Neither is needed for temporary/unpacked loading; both are needed before any Firefox packaging milestone (§17).
 14. **Offscreen document creation race (Chromium)** — `browser.offscreen.createDocument()`'s promise resolves once the document *exists*, not once its module has finished loading and registered its message listener; a forward sent immediately after creation can arrive before that listener is live ("Could not establish connection"). Calling `createDocument()` again while one is already being created also throws. The platform layer handles both: `ensureComputeHost()` memoizes a single in-flight creation promise (so concurrent callers never race the create call itself), and the background relay retries its first forward a few times with a short delay to absorb the one-time load gap.
 15. **Offscreen documents expose almost no `chrome.*` API surface (Chromium)** — found building M6, when the agent loop first called `Platform.settings` (backed by `chrome.storage.local`) from inside the offscreen document. Per Chrome's own docs, offscreen documents are deliberately restricted to `chrome.runtime`'s messaging methods only, "to reduce the likelihood of extensions using these as a background-page replacement" — `chrome.storage`, `chrome.tabs` and `chrome.permissions` are all unavailable there too, not just `tabs` (item 1 above only mentioned `tabs`). `settings.get/set/remove` now detect this the same way `tabs`-bound calls already do (`typeof browser.storage?.local?.get === 'function'`) and relay through the background service worker when it's missing, reusing the existing request/response relay machinery (`chromium.ts`'s `EdwardMessage` union gained a `'settings'` variant).
-16. **Content-script match patterns double as host permissions (Chromium)** — found building M8: the §6.2.2 compute-host fetch fallback succeeds for a cross-origin image with no CORS headers even though the manifest's `host_permissions` only lists the backend origin, because Chromium treats the content script's `<all_urls>` match pattern as a host permission for the whole extension (including the offscreen document). So the fallback works on Chromium without any runtime `requestHostPermission` prompt (M8 deliberately requests none). The fetch always uses `credentials: 'omit'` and `referrerPolicy: 'no-referrer'`, and only `http:`/`https:`/`data:` URLs are fetched. Firefox behaviour is unverified (M10). M9 narrows what that access can reach: the fetch fallback refuses private and intranet hosts (localhost, loopback, RFC1918, link-local incl. cloud metadata, CGNAT, IPv6 ULA/link-local, `.local`/`.internal`/`.lan`/`.intranet`/`.home.arpa`, single-label names). Such an image is withheld as `unreadable` and the refusal is logged with reason `private_host` (`src/image/privateHost.ts`). Limit: the host is checked as written; a public name that resolves to a private address is not caught (extensions have no portable DNS API).
+16. **Content-script match patterns double as host permissions (Chromium)** — found building M8: the §6.2.2 compute-host fetch fallback succeeds for a cross-origin image with no CORS headers even though the manifest's `host_permissions` only lists the backend origin, because Chromium treats the content script's `<all_urls>` match pattern as a host permission for the whole extension (including the offscreen document). So the fallback works on Chromium without any runtime `requestHostPermission` prompt (M8 deliberately requests none). The fetch always uses `credentials: 'omit'` and `referrerPolicy: 'no-referrer'`, and only `http:`/`https:`/`data:` URLs are fetched. Firefox 156 behaves the same: the background page's fetch of a cross-origin, no-CORS image succeeds (verified in M10, checklist F9). M9 narrows what that access can reach: the fetch fallback refuses private and intranet hosts (localhost, loopback, RFC1918, link-local incl. cloud metadata, CGNAT, IPv6 ULA/link-local, `.local`/`.internal`/`.lan`/`.intranet`/`.home.arpa`, single-label names). Such an image is withheld as `unreadable` and the refusal is logged with reason `private_host` (`src/image/privateHost.ts`). Limit: the host is checked as written; a public name that resolves to a private address is not caught (extensions have no portable DNS API).
+17. **`convertToBlob()` waits for idle time in the offscreen document (Chromium)**. Found in M10: Chromium runs `OffscreenCanvas.convertToBlob()` in a document as an idle task with a 1 s fallback deadline. The offscreen document is hidden and never idle in that sense, so every encode took a constant ~1000 ms (`image.redact`, M9 Noticed 1). Tesseract.js hit the same wait, because it turns an OffscreenCanvas input into bytes with `convertToBlob()` on the calling thread. Fixes: JPEG encoding runs in a small Worker (`src/image/encodeWorker.ts`, `jpegEncoder.ts`), where it starts straight away. If the worker fails, it falls back to an in-place encode; the pixels are already redacted, so that costs only time. Tesseract gets uncompressed BMP bytes built in TypeScript (`providers/ocr/bmp.ts`, alpha blended onto white as Leptonica does). Measured: `image.redact` p50 1015 → 12 ms; `image.ocr` p50 ~1750 → ~1250 ms (before the §9.6 pool change).
+18. **Content-script site access (Firefox MV3)**. Firefox 156 grants `<all_urls>` content-script access at install (verified in M10 with a `web-ext`/temporary install: no prompt on first Start), but the user can turn it off in `about:addons`. Without it the content script doesn't run and the agent can't start (item 8). `Platform.ensureSiteAccess()` (M10):
+    - gecko calls `permissions.request({origins: ['<all_urls>']})`. It resolves at once, with no prompt, if access is already granted.
+    - chromium only checks with `permissions.contains`. Access is granted at install there; `<all_urls>` isn't optional, so it can't be requested, and a user who restricts it does so in Chrome's own site-access UI.
+    - The popup's Start calls it before any `await`, because Firefox drops the user gesture after one. If access is refused, the popup says so and nothing starts.
+    - Found in M10 (checklist F3): with access turned off in `about:addons`, Firefox 156 showed no prompt and the task ran on the current tab. The toolbar click most likely grants per-tab access through the manifest's `activeTab` (not proven). Access still comes only from a user action on that tab, so the intent holds, but the refusal branch is unreachable on Firefox 156 and untested there.
+19. **WebGPU in Chromium on Linux**. Found in M10: `navigator.gpu.requestAdapter()` returns `null` by default. With `--enable-unsafe-webgpu --enable-features=Vulkan` Chrome exposes the real Vulkan adapter (Intel Gen-9 on the dev laptop). `--enable-unsafe-webgpu` alone exposes **SwiftShader**, a CPU emulator that detection (§10) would count as a GPU. The benchmark passes both flags and prints the adapter so a SwiftShader run is visible.
 
 ### 4.4 Supported-browser test matrix (for the demo)
 
@@ -439,7 +447,7 @@ Notes to record in code and slides:
 
 - **NER worker** ×1 (one model instance, micro-batching).
 - **Vision workers** ×N, where N = `clamp(navigator.hardwareConcurrency - 2, 1, 3)`; each holds face + QR providers. *As built (M9):* face and QR each own a separate pool of N workers (`face/blazefaceMediapipe.ts`, `qr/zxing.ts`), so MediaPipe and zxing never share a worker's crash radius and both run on the same image in parallel. The two share one main-thread worker client (`providers/workerClient.ts`).
-- **OCR**: Tesseract.js scheduler with K = `clamp(hardwareConcurrency / 2, 1, 2)` workers. *As built (M9):* K Tesseract.js workers behind `createWorkerPool` rather than Tesseract's own scheduler, so every model pool shares the same queueing and timeout behaviour.
+- **OCR**: Tesseract.js scheduler with K = `clamp(hardwareConcurrency / 2, 1, 2)` workers. *As built (M9):* K Tesseract.js workers behind `createWorkerPool` rather than Tesseract's own scheduler, so every model pool shares the same queueing and timeout behaviour. *As built (M10):* ceiling raised to 3, so K = `clamp(hardwareConcurrency / 2, 1, 3)`; only 6+ core machines change. On the image fixtures (8 cores, wasm, warm), K=2 left an OCR queue-wait p95 of ~625 ms. K=3 removed it (~3 ms) and cut `image.ocr` p50 from ~1150 to ~960 ms, with p95 unchanged, for ~15 MB per extra engine. Pools log each job's queue wait as `queue_ms` (§11.1).
 - Regex runs inline in the sanitization dispatcher (cheap).
 - A shared bounded async queue (`src/core/pool.ts`) enforces the ceilings. No unbounded spawning; model instances are not duplicated beyond these counts (memory).
 - With WebGPU, one GPU device is shared; extra vision workers mainly help pre/post-processing. Tune N from logged timings.
@@ -452,7 +460,8 @@ Runs once when the compute host starts, before any model loads. Browser-agnostic
 
 1. `navigator.gpu` present **and** `requestAdapter()` returns an adapter → `webgpu`; else `wasm`.
 2. Collect a `DeviceProfile`: `{browser, gpu: {available, vendor?, architecture?}, compute, hardwareConcurrency, deviceMemoryGB?, userAgentData?.platform?}`. Fields not exposed by a browser are `undefined`, never guessed (`deviceMemory` is Chromium-only; `adapter.info` may be absent).
-3. The compute decision is global; providers map it to their library (§9.3). Tesseract always reports `effective_compute: 'wasm'`.
+3. The compute decision is global; providers map it to their library (§9.3). Tesseract always reports `effective_compute: 'wasm'`. *As built (M10):* `ModelProvider.effectiveCompute(compute)` (optional) is what `model.load` and `SessionRecord.models` log. Tesseract and zxing return `'wasm'`. MediaPipe's GPU delegate is WebGL, so a `'webgpu'` label on face detection means "the GPU path".
+   *As built (M10), benchmark only:* e2e/benchmark builds can force the decision with `EDWARD_FORCE_COMPUTE=wasm|webgpu` (compiled in as `__EDWARD_FORCE_COMPUTE__`, `null` in every other build). Forcing `webgpu` still needs a real adapter, otherwise it stays `wasm`. A forced profile carries `compute_forced: true`.
 4. The profile is logged once as the session record (§11).
 5. No re-detection mid-session; device loss is a per-call failure (§9.4).
 
@@ -467,7 +476,7 @@ type OpName =
   | 'dom.phase_a' | 'dom.phase_b' | 'sanitize.regex' | 'sanitize.ner' | 'sanitize.memo_hit'
   | 'image.acquire' | 'image.face' | 'image.ocr' | 'image.qr' | 'image.redact'
   | 'image.cache_hit' | 'image.cache_miss' | 'image.revalidate'
-  | 'model.load' | 'model.downgrade' | 'context.assemble' | 'backend.decide'
+  | 'model.load' | 'model.warmup' | 'model.downgrade' | 'context.assemble' | 'backend.decide'   // model.warmup: as built (M10), §15
   | 'action.validate' | 'token.resolve' | 'action.execute' | 'agent.step';
 
 type Outcome = 'ok' | 'fail' | 'fail_closed' | 'skipped' | 'blocked';
@@ -486,6 +495,7 @@ interface LogRecord {
   tier?: 1 | 2;
   compute?: 'webgpu' | 'wasm';   // on-device execution target (not the reasoning backend)
   counts?: Partial<Record<'units' | 'spans' | 'faces' | 'words' | 'codes' | 'images' | 'bytes' | 'tokens_in' | 'tokens_out', number>>;
+  queue_ms?: number;         // as built (M10): time a pooled model call waited for a free worker (included in duration_ms)
 }
 
 interface SessionRecord { session_id: string; started_at: number; device: DeviceProfile; models: { capability: Capability; model_id: string; tier: number; compute: string }[]; backend_id: string; backend_model?: string; }
@@ -711,11 +721,16 @@ Multiple tabs, downloads, file upload, drag and drop, hover menus, keyboard shor
 ## 15. Latency plan (scored criterion)
 
 - **Warm start:** hardware detection, model loads, Tesseract worker init and one warm-up inference per model happen when the compute host starts, not on the first task. Log `model.load` times.
+  *As built (M10)* (`src/core/warmStart.ts`):
+  - Chromium's background creates the offscreen document whenever its service worker starts, so the host (and warm start) exists before the first task. Firefox's event page is the host, and warm start reruns each time it wakes after an idle unload (§4.3 item 9).
+  - Every pooled worker gets one warm-up call (N face + N QR + K OCR, plus NER), using a blank image or fixed non-PII text. Each capability logs one `model.warmup` record.
+  - Warm-up is staged: NER first, then the three image models together. Warming all four at once saturated the CPU for ~10 s after startup and slowed a task started in that window.
+  - Failures are logged and swallowed; the lazy load path is unchanged.
 - **Parallel observation:** Phase B text and image processing run concurrently; the assembler only waits for images it will send.
 - **Skip work:** size floor (§6.1), hidden containers (§6.7), header/footer trimming (§5.4), memo (§7.7), image cache (§6.6).
 - **Batching:** NER micro-batching (§7.2); chunked messaging (§5.2).
 - **Small payloads:** compact JSON, downscaled images, no history images (§13.2).
-- **Measure, then tune:** a benchmark script replays the fixture pages and prints p50/p95 per op from the logger. Record baseline numbers on day 1 of the vertical slice and set targets from them; report WebGPU vs WASM numbers side by side in the presentation.
+- **Measure, then tune:** a benchmark script replays the fixture pages and prints p50/p95 per op from the logger. *As built (M10):* `npm run bench -- --label "<machine>"` (`scripts/benchmark.ts`, `tests/bench/benchmark.spec.ts`). It builds once per forced compute path, replays the fixtures in Chromium after warm start, and writes the WASM and WebGPU columns side by side to `docs/BENCHMARKS.md`. Record baseline numbers on day 1 of the vertical slice and set targets from them; report WebGPU vs WASM numbers side by side in the presentation.
 
 ---
 
@@ -732,6 +747,7 @@ State these in code comments and in the presentation:
 - Custom reasoning server — the wire protocol is specified and a stub client exists; no server is built. The demo uses Groq through the generic LLM backend.
 - Secret fields — never read, never typed by the agent.
 - Safari — builds from the same code; not part of the demo.
+- Edge — runs the Chromium build (`.output/chrome-mv3`), which the Chrome e2e suite covers; the manual Edge smoke test (§4.4, §18.5) was cut in M10 (user decision, 2026-09-25) and never run.
 - API key in extension storage — acceptable for a prototype, not production.
 
 ---

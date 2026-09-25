@@ -21,7 +21,7 @@
 import type { ImageKind } from '@/dom/types';
 import { ReasonCodeError } from '@/logging';
 import type { LogMeta, LogRecord, OpName, ReasonCode, RuntimeLogger } from '@/logging';
-import type { Box, FaceDetector, OcrEngine, PiiNer, QrDetector } from '@/models/capabilities';
+import type { Box, DetectOptions, FaceDetector, OcrEngine, PiiNer, QrDetector } from '@/models/capabilities';
 import type { TokenMapImpl } from '@/sanitize/tokenMap';
 import { cacheKey, decideCache, revalidationOutcome } from './cachePolicy';
 import type { FetchResult, Validators } from './fetchImage';
@@ -102,18 +102,21 @@ export function createImagePipeline(deps: ImagePipelineDeps): ImagePipeline {
     op: OpName,
     meta: LogMeta,
     failReason: ReasonCode,
-    fn: () => Promise<T>,
+    fn: (options: DetectOptions) => Promise<T>,
     countsOf?: (value: T) => LogRecord['counts'],
   ): Promise<T> {
     const t_start = stamp();
+    // Filled in by pooled detectors just before their job starts (M10).
+    let queue_ms: number | undefined;
+    const options: DetectOptions = { onQueueWait: (ms) => (queue_ms = ms) };
     try {
-      const value = await fn();
+      const value = await fn(options);
       const t_end = stamp();
-      logger.record({ ...meta, op, t_start, t_end, duration_ms: t_end - t_start, outcome: 'ok', counts: countsOf?.(value) ?? meta.counts });
+      logger.record({ ...meta, op, t_start, t_end, duration_ms: t_end - t_start, queue_ms, outcome: 'ok', counts: countsOf?.(value) ?? meta.counts });
       return value;
     } catch (error) {
       const t_end = stamp();
-      logger.record({ ...meta, op, t_start, t_end, duration_ms: t_end - t_start, outcome: 'fail', reason: reasonOf(error, failReason) });
+      logger.record({ ...meta, op, t_start, t_end, duration_ms: t_end - t_start, queue_ms, outcome: 'fail', reason: reasonOf(error, failReason) });
       throw error;
     }
   }
@@ -150,9 +153,9 @@ export function createImagePipeline(deps: ImagePipelineDeps): ImagePipeline {
       // §6.4.1-3 run in parallel on the same pixels (§15); each detector
       // lives in its own worker pool. Any rejection withholds the image.
       const [faces, words, codes] = await Promise.all([
-        deps.faceDetector().then((d) => measured('image.face', meta, 'detector_failed', () => d.detect(input), (f) => ({ faces: f.length }))),
-        deps.ocrEngine().then((d) => measured('image.ocr', meta, 'detector_failed', () => d.read(input), (w) => ({ words: w.length }))),
-        deps.qrDetector().then((d) => measured('image.qr', meta, 'detector_failed', () => d.detect(input), (c) => ({ codes: c.length }))),
+        deps.faceDetector().then((d) => measured('image.face', meta, 'detector_failed', (o) => d.detect(input, o), (f) => ({ faces: f.length }))),
+        deps.ocrEngine().then((d) => measured('image.ocr', meta, 'detector_failed', (o) => d.read(input, o), (w) => ({ words: w.length }))),
+        deps.qrDetector().then((d) => measured('image.qr', meta, 'detector_failed', (o) => d.detect(input, o), (c) => ({ codes: c.length }))),
       ]);
       // §6.4.4: OCR words through the §7 path; only PII words are redacted.
       const ocr = await findOcrRedactions(words, {

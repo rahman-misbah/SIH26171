@@ -49,4 +49,16 @@ describe('aggregate', () => {
 
     expect(aggregate(records).failClosedCount).toBe(2);
   });
+
+  it('adds queue-wait percentiles for ops whose records carry queue_ms (M10)', () => {
+    const records = [
+      ...[0, 0, 0, 100, 200].map((queue_ms) => record({ op: 'image.ocr', duration_ms: 300, queue_ms })),
+      record({ op: 'image.face', duration_ms: 5 }),
+    ];
+
+    const result = aggregate(records);
+
+    expect(result.perOp['image.ocr']).toEqual({ p50: 300, p95: 300, count: 5, queue: { p50: 0, p95: 200 } });
+    expect(result.perOp['image.face']).toEqual({ p50: 5, p95: 5, count: 1 });
+  });
 });

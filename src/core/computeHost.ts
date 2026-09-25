@@ -16,6 +16,7 @@ import { onComputeHostRequest } from '@/platform';
 import type { MessageMap, Platform } from '@/platform';
 import type { SkeletonNode } from '@/dom/types';
 import { sanitizeUnit } from '@/sanitize';
+import { warmStart, WARMUP_IMAGE_SIDE } from './warmStart';
 
 // §13.2: one agent-loop instance for the lifetime of this compute host --
 // owns every session's token map, abort controller and history (§7.6).
@@ -180,7 +181,7 @@ export async function bootstrapComputeHost(platform: Platform): Promise<void> {
   // can't receive them synchronously through getBackend(id) itself (§12.4).
   configureBackendDeps({ settings: platform.settings, logger, assetUrl: platform.assetUrl });
 
-  const device = await detectDevice(platform.name);
+  const device = await detectDevice(platform.name, __EDWARD_FORCE_COMPUTE__ ?? undefined);
   const backendSettings = await getBackendSettings(platform.settings);
 
   const session_id = crypto.randomUUID();
@@ -199,6 +200,15 @@ export async function bootstrapComputeHost(platform: Platform): Promise<void> {
   // them synchronously through getModel(capability) itself (§9.4), same
   // reasoning as configureBackendDeps.
   configureModelDeps({ compute: device.compute, assetUrl: platform.assetUrl, logger, session_id });
+
+  // §15 warm start. Not awaited: requests are already being dispatched, and
+  // one that arrives mid-warm-up shares the same getModel() load promise.
+  void warmStart({
+    getModel,
+    logger,
+    session_id,
+    blankImage: () => ({ data: new ImageData(WARMUP_IMAGE_SIDE, WARMUP_IMAGE_SIDE) }),
+  });
 
   await logger.flush();
 }
