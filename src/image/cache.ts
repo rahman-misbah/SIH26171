@@ -4,6 +4,7 @@
 // which has no raw-bytes field by construction (§2.8, D9). Only exercised in
 // a real browser (Vitest has no IndexedDB) -- see tests/e2e/images.spec.ts.
 
+import { selectPrunable } from './cachePolicy';
 import type { ImageCacheRecord, ImageCacheStore } from './types';
 
 // Exported so the e2e suite can open the same database to inspect it.
@@ -49,6 +50,34 @@ export class IdbImageCache implements ImageCacheStore {
       tx.objectStore(IMAGE_CACHE_STORE).put(record);
       tx.oncomplete = () => resolve();
       tx.onerror = () => reject(tx.error ?? new Error('IndexedDB put failed'));
+    });
+  }
+
+  // M12: deletes expired and over-cap records (cachePolicy.ts), returns how
+  // many. One readwrite transaction: the cursor reads each record's
+  // validated_at, then the chosen keys are deleted in the same transaction.
+  async prune(now: number): Promise<number> {
+    const db = await this.db();
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(IMAGE_CACHE_STORE, 'readwrite');
+      const store = tx.objectStore(IMAGE_CACHE_STORE);
+      const entries: { key: string; validated_at: number }[] = [];
+      let deleted = 0;
+      const cursorReq = store.openCursor();
+      cursorReq.onsuccess = () => {
+        const cursor = cursorReq.result;
+        if (cursor) {
+          const record = cursor.value as ImageCacheRecord;
+          entries.push({ key: record.key, validated_at: record.validated_at });
+          cursor.continue();
+          return;
+        }
+        const keys = selectPrunable(entries, now);
+        for (const key of keys) store.delete(key);
+        deleted = keys.length;
+      };
+      tx.oncomplete = () => resolve(deleted);
+      tx.onerror = () => reject(tx.error ?? new Error('IndexedDB prune failed'));
     });
   }
 }

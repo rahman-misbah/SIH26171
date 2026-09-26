@@ -39,6 +39,8 @@ export interface RequestMessageMap {
       page: { url: string; title: string; viewport: { w: number; h: number }; scroll: { x: number; y: number } }; // already sanitized
       skeleton: SkeletonNode[];
       contentResults: { node_id: string; field: ContentField; text: string }[];
+      // M12 (§14.2): content was left out for the budget.
+      truncated: boolean;
       // §14.3: whose capabilities select this step's images (M9).
       backend_id: string;
     };
@@ -56,6 +58,7 @@ export interface RequestMessageMap {
       page: { url: string; title: string; viewport: { w: number; h: number }; scroll: { x: number; y: number } };
       skeleton: SkeletonNode[];
       contentResults: { node_id: string; field: ContentField; text: string }[];
+      truncated: boolean; // M12 (§14.2)
       origin: string;
       backend_id: string;
     };
@@ -92,6 +95,13 @@ export interface RequestMessageMap {
   imageProcess: {
     request: { session_id: string; origin: string; image: ImageRef; pixels?: ArrayBuffer };
     response: ProcessResult;
+  };
+  // M12 (§14.2): the page-text budget, in characters, for this backend's
+  // context (src/dom/contentBudget.ts). Asked once per observation, before
+  // any text is sanitized.
+  contentBudget: {
+    request: { backend_id: string };
+    response: { max_chars: number };
   };
   // Forwards an already-timed LogRecord from the content script (§11) --
   // it has no logger of its own; see RuntimeLogger.record()'s doc comment.

@@ -31,7 +31,9 @@ export default defineContentScript({
 
       // Triggers one observation directly and reads the result off the DOM,
       // for tests that only need a read (canary.spec.ts) rather than a full
-      // agent-loop run.
+      // agent-loop run. M12: the observation's wall time is stamped too, for
+      // the real-site pass (tests/realsites).
+      const observeStart = performance.now();
       void observePage(platform.transport, document, {
         session_id: crypto.randomUUID(),
         step: 0,
@@ -40,6 +42,7 @@ export default defineContentScript({
         backend_id: 'mock',
       })
         .then((result) => {
+          document.documentElement.dataset.edwardObservationMs = String(performance.now() - observeStart);
           // Image bytes (ObservationImage.data, a Uint8Array) as base64, so
           // the e2e suite can decode and re-OCR the outgoing images (§18.1).
           document.documentElement.dataset.edwardObservation = JSON.stringify(result, (_key, value: unknown) =>
@@ -49,6 +52,9 @@ export default defineContentScript({
         .catch((error: unknown) => {
           document.documentElement.dataset.edwardObservation = JSON.stringify({
             status: 'error',
+            // `name` alone is safe to print; `message` can quote page
+            // content (a selector error embeds the page's element id).
+            name: error instanceof Error ? error.name : 'unknown',
             message: error instanceof Error ? error.message : 'unknown',
           });
         });

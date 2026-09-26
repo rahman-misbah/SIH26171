@@ -16,6 +16,7 @@ Browser extension that acts as a privacy firewall for browser agents: it extract
 - `npm run fetch-models` — downloads tier-1 model weights into `public/models/` (git-ignored)
 - `npm run bench -- --label "<machine>"` — WASM vs WebGPU benchmark over the fixtures, written to `docs/BENCHMARKS.md`
 - `npm run bench:faces -- --label "<machine>" [--compute wasm|webgpu]` — face recall per provider (BlazeFace vs SCRFD), written to `docs/BENCHMARKS.md`
+- `npm run realsites -- --label "<machine>" [--no-build]` — one observation per real site in `tests/realsites/sites.ts` (mock backend, counts only), written to `docs/REAL_SITES.md`. `EDWARD_REALSITES_ONLY=id,id` narrows it
 - `npm run wire-schema` — regenerates `docs/wire/*.schema.json` from the wire types (a unit test fails when they're stale)
 - `npm run serve-fixtures` — fixture pages on :8123/:8124 for the manual browser checklist (`docs/BROWSER_CHECKLIST.md`)
 

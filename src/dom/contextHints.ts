@@ -19,38 +19,81 @@ const UGC_CLASS_RE = /\b(comment|review|forum-post|user-post)\b/i;
 // shape. A loose, best-effort proxy for "under a heading" (§7.5 doesn't
 // define the term further); bounded implicitly by walking only to
 // `document.body` (its own previousElementSibling chain is empty).
-function hasNearbyContactHeading(el: Element): boolean {
-  for (let ancestor: Element | null = el; ancestor; ancestor = ancestor.parentElement) {
-    for (let sib = ancestor.previousElementSibling; sib; sib = sib.previousElementSibling) {
-      if (/^h[1-6]$/i.test(sib.tagName) && CONTACT_HEADING_RE.test(sib.textContent ?? '')) return true;
+//
+// M12: the walks are memoized per element for one Phase A run
+// (createContextHints). Unmemoized, every text node re-scanned every
+// ancestor's preceding siblings -- quadratic on a long article.
+type Memo = Map<Element, boolean>;
+
+function memoized(memo: Memo, el: Element, compute: () => boolean): boolean {
+  let value = memo.get(el);
+  if (value === undefined) {
+    value = compute();
+    memo.set(el, value);
+  }
+  return value;
+}
+
+export function createContextHints(): (el: Element) => ContextHints {
+  const headingBefore: Memo = new Map(); // a matching heading among el's preceding siblings
+  const nearHeading: Memo = new Map();
+  const contactMarkup: Memo = new Map();
+  const ugc: Memo = new Map();
+
+  // Iterative (a parent can have thousands of children): walk back until a
+  // memoized sibling or a matching heading, then fill in the walked ones.
+  const hasContactHeadingBefore = (el: Element): boolean => {
+    const walked: Element[] = [];
+    let result = false;
+    for (let current: Element = el; ; ) {
+      const cached = headingBefore.get(current);
+      if (cached !== undefined) {
+        result = cached;
+        break;
+      }
+      walked.push(current);
+      const sib = current.previousElementSibling;
+      if (!sib) break;
+      if (/^h[1-6]$/i.test(sib.tagName) && CONTACT_HEADING_RE.test(sib.textContent ?? '')) {
+        result = true;
+        break;
+      }
+      current = sib;
     }
-    if (ancestor.tagName === 'BODY') break;
-  }
-  return false;
-}
+    for (const w of walked) headingBefore.set(w, result);
+    return result;
+  };
 
-function isInContactMarkup(el: Element): boolean {
-  for (let ancestor: Element | null = el; ancestor; ancestor = ancestor.parentElement) {
-    const itemtype = ancestor.getAttribute('itemtype');
-    if (itemtype && CONTACT_ITEMTYPE_RE.test(itemtype)) return true;
-  }
-  return false;
-}
+  const hasNearbyContactHeading = (el: Element): boolean =>
+    memoized(nearHeading, el, () => {
+      if (hasContactHeadingBefore(el)) return true;
+      if (el.tagName === 'BODY' || !el.parentElement) return false;
+      return hasNearbyContactHeading(el.parentElement);
+    });
 
-function isInUgcBlock(el: Element): boolean {
-  for (let ancestor: Element | null = el; ancestor; ancestor = ancestor.parentElement) {
-    const itemtype = ancestor.getAttribute('itemtype');
-    if (itemtype && UGC_ITEMTYPE_RE.test(itemtype)) return true;
-    if (UGC_CLASS_RE.test(ancestor.className)) return true;
-  }
-  return false;
-}
+  const isInContactMarkup = (el: Element): boolean =>
+    memoized(contactMarkup, el, () => {
+      const itemtype = el.getAttribute('itemtype');
+      if (itemtype && CONTACT_ITEMTYPE_RE.test(itemtype)) return true;
+      return el.parentElement ? isInContactMarkup(el.parentElement) : false;
+    });
 
-export function computeContextHints(el: Element): ContextHints {
-  return {
+  const isInUgcBlock = (el: Element): boolean =>
+    memoized(ugc, el, () => {
+      const itemtype = el.getAttribute('itemtype');
+      if (itemtype && UGC_ITEMTYPE_RE.test(itemtype)) return true;
+      if (UGC_CLASS_RE.test(el.className)) return true;
+      return el.parentElement ? isInUgcBlock(el.parentElement) : false;
+    });
+
+  return (el) => ({
     in_landmark: findTrimmedLandmarkRoot(el) !== null,
     near_contact_heading: hasNearbyContactHeading(el),
     in_contact_markup: isInContactMarkup(el),
     in_ugc_block: isInUgcBlock(el),
-  };
+  });
+}
+
+export function computeContextHints(el: Element): ContextHints {
+  return createContextHints()(el);
 }

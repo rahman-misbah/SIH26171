@@ -21,8 +21,11 @@ export function resolveAccessibleName(el: Element, doc: Document): string {
   if (ariaLabel && ariaLabel.trim() !== '') return ariaLabel.trim();
 
   if (el.id !== '') {
-    const forLabel = doc.querySelector(`label[for="${el.id.replace(/"/g, '\\"')}"]`);
-    const text = textOf(forLabel);
+    // Compared as strings, not through a selector: real page ids contain
+    // newlines, quotes and backslashes that break a `label[for="..."]`
+    // selector (it threw and failed the whole observation, M12).
+    const forLabel = Array.from(doc.getElementsByTagName('label')).find((label) => label.htmlFor === el.id);
+    const text = textOf(forLabel ?? null);
     if (text !== '') return text;
   }
 

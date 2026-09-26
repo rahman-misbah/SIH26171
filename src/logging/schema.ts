@@ -18,6 +18,7 @@ export type OpName =
   | 'image.cache_hit'
   | 'image.cache_miss'
   | 'image.revalidate'
+  | 'image.cache_prune' // M12: expired/over-cap cache records deleted at host start (counts.images)
   | 'model.load'
   | 'model.warmup' // M10: §15 warm-start inference(s) for one capability
   | 'model.downgrade'
@@ -55,6 +56,7 @@ export type ReasonCode =
   | 'private_host' // M9: §6.2.2 fetch fallback refused a private/intranet host
   | 'model_override_unknown' // M11: the model settings name a provider id that doesn't exist (ignored)
   | 'backend_version_unsupported' // M11: an http backend answered 426 to schema_version (§12.3)
+  | 'cache_prune_failed' // M12: the image-cache prune at host start failed (cache left as it was)
   | 'unknown';
 
 export interface LogRecord {

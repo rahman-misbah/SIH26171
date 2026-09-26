@@ -24,8 +24,9 @@ export async function prepareObservationImages(
   available: ReadonlyMap<string, AvailableImage>,
   capabilities: BackendCapabilities,
   reencode: (redacted: Blob, step: FitStep) => Promise<Blob>,
+  viewportH?: number, // §6.7 bands for selection order (M12)
 ): Promise<PreparedImages> {
-  const selection = selectImages(skeleton, new Set(available.keys()), capabilities.maxImagesPerRequest);
+  const selection = selectImages(skeleton, new Set(available.keys()), capabilities.maxImagesPerRequest, viewportH);
   const marks = new Map<string, ImageOmittedReason>();
   for (const id of selection.overLimit) marks.set(id, 'request_limit');
   for (const id of selection.missing) marks.set(id, 'unreadable');

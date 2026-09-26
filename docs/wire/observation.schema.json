@@ -107,6 +107,10 @@
             "additionalProperties": false
           }
         },
+        "truncated": {
+          "type": "boolean",
+          "const": true
+        },
         "images": {
           "type": "array",
           "items": {
@@ -192,6 +196,9 @@
         },
         "context_hints": {
           "$ref": "#/definitions/ContextHints"
+        },
+        "trimmed": {
+          "type": "boolean"
         },
         "content": {
           "type": "object",

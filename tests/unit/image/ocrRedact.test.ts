@@ -100,6 +100,15 @@ describe('findOcrRedactions', () => {
     expect(entry?.sources).toEqual([{ img_id: 'img1', bbox: { x: 0, y: 0, w: 112, h: 16 } }]);
   });
 
+  it('redacts a value already tokenized on this origin even when NER misses it, reusing its token (M12)', async () => {
+    const tokenMap = new TokenMapImpl();
+    const c = ctx({ tokenMap });
+    const token = tokenMap.tokenize({ type: 'NAME', value: 'Priya Sharma', origin: c.origin, source: { node_id: '__task__', field: 'text', offset: 0 } });
+    const result = await findOcrRedactions([word('Priya', 0, 0), word('Sharma', 0, 50), word('ordered', 0, 110)], c);
+    expect(result.redacted.map((w) => w.text)).toEqual(['Priya', 'Sharma']);
+    expect(tokenMap.entryForToken(token)?.sources).toHaveLength(2);
+  });
+
   it('applies the low-confidence rule even with no PII match', async () => {
     const result = await findOcrRedactions([word('Ref', 0, 0), word('9x8y7z65', 0, 40, 'low')], ctx());
     expect(result.redacted.map((w) => w.text)).toEqual(['9x8y7z65']);

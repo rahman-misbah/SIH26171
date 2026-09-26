@@ -11,3 +11,4 @@ export { TokenMapImpl, type TokenizeInput } from './tokenMap';
 export { sanitizeText, tokenizeOpaque, type MemoHitLogger, type SanitizeTextContext } from './sanitizeText';
 export { sanitizeUrl } from './url';
 export { sanitizeUnit, type PipelineContext } from './pipeline';
+export { scanResidualPii, type ResidualKind, type ResidualScanResult } from './residualScan';

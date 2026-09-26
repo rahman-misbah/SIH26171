@@ -27,7 +27,7 @@ When sensitive regions of an image have been redacted, they appear as solid mask
 
 # Incomplete Context
 
-The provided webpage data may not represent the complete page. Some elements may have been intentionally excluded (iframes, canvases, unreadable images, elements beyond a processing limit) and are marked as such rather than silently dropped. Do not assume that missing information does not exist on the page, and do not claim the page contains or lacks something unless the provided context supports it.
+The provided webpage data may not represent the complete page. Some elements may have been intentionally excluded (iframes, canvases, unreadable images, elements beyond a processing limit) and are marked as such rather than silently dropped. Page text is also limited to a budget: content in the viewport comes first, then content nearest to it. When text was left out, the snapshot has `"truncated": true` and the nodes where it was dropped have `"trimmed": true`; scroll toward them (or use `scroll_to`) to see that content in the next step. Do not assume that missing information does not exist on the page, and do not claim the page contains or lacks something unless the provided context supports it.
 
 # Trust Boundaries
 

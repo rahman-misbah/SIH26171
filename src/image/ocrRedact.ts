@@ -10,6 +10,8 @@
 // landmark/heading/UGC structure, so the §7.5 email heuristic sees only the
 // email itself and the page origin.
 
+import { findKnownValues } from '@/sanitize/knownValues';
+import { tagMasked } from '@/sanitize/maskRegex';
 import { decidePii } from '@/sanitize/decide';
 import { matchRegexSpans } from '@/sanitize/regex';
 import type { TokenMapImpl } from '@/sanitize/tokenMap';
@@ -86,15 +88,27 @@ export async function findOcrRedactions(words: OcrWord[], ctx: OcrRedactionConte
   const lines = groupOcrLines(words);
   if (lines.length === 0) return { redacted: [], boxes: [] };
 
-  const nerResults = await ctx.ner.tag(lines.map((l) => l.text));
+  // M12: values already tokenized on this origin are found first, like DOM
+  // text (sanitizeText.ts), masked for NER and exempt from the email check.
+  const known = ctx.tokenMap.knownValues(ctx.origin);
+  const knownPerLine = lines.map((l) => findKnownValues(l.text, known));
+  const regexPerLine = lines.map((l, i) =>
+    matchRegexSpans(l.text).filter((s) => !(knownPerLine[i] ?? []).some((k) => s.start < k.end && k.start < s.end)),
+  );
+  const nerResults = await tagMasked(
+    ctx.ner,
+    lines.map((l) => l.text),
+    lines.map((_, i) => [...(knownPerLine[i] ?? []), ...(regexPerLine[i] ?? [])]),
+  );
   const redacted = new Set<OcrWord>();
 
   lines.forEach((line, i) => {
-    const spans = decidePii(line.text, matchRegexSpans(line.text), nerResults[i] ?? [], {
+    const decided = decidePii(line.text, regexPerLine[i] ?? [], nerResults[i] ?? [], {
       pageOrigin: ctx.origin,
       hints: undefined,
       isMailtoHref: false,
     });
+    const spans = [...(knownPerLine[i] ?? []), ...decided];
     for (const span of spans) {
       const covered = line.words.filter((w) => w.start < span.end && span.start < w.end);
       if (covered.length === 0) continue;

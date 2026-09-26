@@ -74,20 +74,30 @@ export function computeVisibilitySnapshot(el: Element, doc: Document): Visibilit
   const style = doc.defaultView?.getComputedStyle(el);
   const rect = el.getBoundingClientRect();
   const ariaLive = el.getAttribute('aria-live');
+  const displayNone = style?.display === 'none';
+  const visibilityHidden = style?.visibility === 'hidden';
+  const zeroSize = rect.width === 0 && rect.height === 0;
+  const offDocument = !el.isConnected;
+  // M12: the exceptions below only change the outcome for a structurally
+  // hidden element (classifyVisibility), and each is costly -- a subtree
+  // scan, a document scan, the element's whole text. Computed for every
+  // element they made Phase A quadratic (4.7 s on a Wikipedia article).
+  const hidden = displayNone || visibilityHidden || zeroSize || offDocument;
 
   return {
-    displayNone: style?.display === 'none',
-    visibilityHidden: style?.visibility === 'hidden',
-    zeroSize: rect.width === 0 && rect.height === 0,
-    offDocument: !el.isConnected,
+    displayNone,
+    visibilityHidden,
+    zeroSize,
+    offDocument,
     isInteractive: isInteractiveElement(el),
-    hasInteractiveDescendant: hasInteractiveDescendant(el),
-    isLiveToggleTarget: isLiveToggleTarget(el, doc),
+    hasInteractiveDescendant: hidden && hasInteractiveDescendant(el),
+    isLiveToggleTarget: hidden && isLiveToggleTarget(el, doc),
     isAriaLive: ariaLive !== null && ariaLive !== 'off',
     // Best-effort: the common "sr-only" pattern (absolutely positioned,
     // clipped to ~0px) attached to a labelled control. No fixture exercises
     // this yet -- noted in the M5 Log as a corner case to revisit.
     isVisuallyHiddenLabelled:
+      hidden &&
       style?.position === 'absolute' &&
       (style.width === '1px' || style.width === '0px') &&
       style.overflow === 'hidden' &&

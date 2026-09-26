@@ -26,6 +26,11 @@ or logs.
 - Faces, QR codes and PII text in images are already covered with solid fills.
 - Iframes, canvases, images that couldn't be read and other exclusions appear as markers, so you
   can see where content was removed.
+- Page text is budgeted (SPEC §14.2, M12): in-viewport content first, then content nearest the
+  viewport. When anything was left out, the observation has `truncated: true` and the nodes
+  where text was dropped carry `trimmed: true`. Scrolling brings that content into the viewport
+  for the next step. The budget is 40% of your `maxContextTokens` (at ~4 characters per token),
+  capped at 12,000 characters.
 
 ## Endpoint rules
 

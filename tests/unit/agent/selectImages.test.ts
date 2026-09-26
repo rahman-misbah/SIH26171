@@ -37,6 +37,15 @@ describe('selectImages', () => {
     });
   });
 
+  it('uses the content script\'s §6.7 queue order: near-viewport before far, even if smaller (M12)', () => {
+    // M10 Noticed 2: host selection ranked off-viewport images by area only,
+    // while the content script processed them near-first, so the images sent
+    // depended on which were cached.
+    const near = { ...img('near', { in_viewport: false, w: 100, h: 100 }), bbox: { x: 0, y: 900, w: 100, h: 100 } };
+    const far = { ...img('far', { in_viewport: false, w: 900, h: 900 }), bbox: { x: 0, y: 5000, w: 900, h: 900 } };
+    expect(selectImages([far, near], new Set(['near', 'far']), 1, 800).selected).toEqual(['near']);
+  });
+
   it('keeps DOM order for equal priority and area', () => {
     const skeleton = [img('a'), img('b'), img('c')];
     expect(selectImages(skeleton, new Set(['a', 'b', 'c']), 2).selected).toEqual(['a', 'b']);

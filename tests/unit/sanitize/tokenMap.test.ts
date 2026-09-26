@@ -141,3 +141,18 @@ describe('TokenMapImpl', () => {
     expect(map.resolve('[PII_EMAIL_99]')).toBeUndefined();
   });
 });
+
+describe('TokenMapImpl.knownValues (M12)', () => {
+  it('lists the values tokenized on one origin, never another', () => {
+    const map = new TokenMapImpl();
+    const source = { node_id: 'n1', field: 'text', offset: 0 };
+    map.tokenize({ type: 'NAME', value: 'Priya Sharma', origin: 'https://a.example', source });
+    map.tokenize({ type: 'PHONE', value: '+91 98765 43210', origin: 'https://a.example', source });
+    map.tokenize({ type: 'NAME', value: 'Arjun Rao', origin: 'https://b.example', source });
+    expect(map.knownValues('https://a.example')).toEqual([
+      { type: 'NAME', value: 'Priya Sharma' },
+      { type: 'PHONE', value: '+91 98765 43210' },
+    ]);
+    expect(map.knownValues('https://c.example')).toEqual([]);
+  });
+});

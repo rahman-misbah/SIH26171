@@ -19,6 +19,19 @@ describe('resolveAccessibleName', () => {
     expect(resolveAccessibleName(document.getElementById('el')!, document)).toBe('UPI ID');
   });
 
+  it('matches label[for] on an id that is not a valid CSS string (M12, india.gov.in)', () => {
+    // Real pages use ids with newlines, quotes and backslashes; a selector
+    // built from them threw and failed the whole observation.
+    document.body.innerHTML = '<label>District</label><input />';
+    const input = document.querySelector('input')!;
+    const label = document.querySelector('label')!;
+    for (const id of ['One District\nOne Product', 'a"b', 'c\\d']) {
+      input.id = id;
+      label.htmlFor = id;
+      expect(resolveAccessibleName(input, document)).toBe('District');
+    }
+  });
+
   it('falls back to a wrapping <label>', () => {
     document.body.innerHTML = '<label>Password <input id="el" type="password" /></label>';
     expect(resolveAccessibleName(document.getElementById('el')!, document)).toContain('Password');

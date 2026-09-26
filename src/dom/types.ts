@@ -75,6 +75,11 @@ export interface SkeletonNode {
   // §7.5: structural context for the public-vs-private email heuristic,
   // computed in Phase A (no content read). Only set on content-bearing nodes.
   context_hints?: ContextHints;
+  // M12 (§14.2): content under or on this node was left out for the budget
+  // (src/dom/contentBudget.ts) -- never read into a unit, never sent. The
+  // observation also carries `truncated: true`. Scrolling there brings it
+  // into the viewport, which the budget ranks first.
+  trimmed?: boolean;
   // Fields captured in Phase A whose sanitized text is still pending from
   // Phase B; resolved into `SanitizedNode.content` by (node_id, field).
   pending_content: ContentField[];

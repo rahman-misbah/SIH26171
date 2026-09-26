@@ -23,6 +23,8 @@ export interface AssembleInput {
   page: { url: string; title: string; viewport: { w: number; h: number }; scroll: { x: number; y: number } }; // already sanitized
   skeleton: SkeletonNode[];
   contentResults: ContentResult[]; // already sanitized, original window order preserved
+  // M12 (§14.2): content was left out for the budget (src/dom/contentBudget.ts).
+  truncated?: boolean;
   // §13.2: previous steps' thought/actions/results, already sanitized (tokens
   // only, never raw PII, since they're the same Action objects the backend
   // itself returned). Owned by the agent loop (M6) -- empty for a standalone
@@ -116,6 +118,7 @@ export function assembleObservation(input: AssembleInput): AssembleResult {
     dom: buildDom(input.skeleton, input.contentResults),
     images: input.images ?? [],
     history: input.history ?? [],
+    ...(input.truncated ? { truncated: true as const } : {}),
   };
 
   if (finalGuardTriggered(observation)) return { status: 'blocked' };

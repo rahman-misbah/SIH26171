@@ -14,7 +14,7 @@
 import { resolveAccessibleName } from './accessibleName';
 import { semanticClassFlags } from './classFlags';
 import { extractCssUrl } from './imageCandidates';
-import { computeContextHints } from './contextHints';
+import { createContextHints } from './contextHints';
 import { createIdGenerator } from './ids';
 import { findTrimmedLandmarkRoot } from './landmark';
 import { ElementRegistry } from './registry';
@@ -29,8 +29,8 @@ const MARKER_TAGS: Record<string, ExclusionMarker> = {
   video: 'video_skipped',
 };
 
-const INTERACTIVE_TAGS = new Set(['a', 'button', 'input', 'select', 'textarea', 'summary', 'details']);
-const INTERACTIVE_ROLES = new Set(['button', 'link', 'checkbox', 'radio', 'menuitem', 'tab', 'switch']);
+export const INTERACTIVE_TAGS = new Set(['a', 'button', 'input', 'select', 'textarea', 'summary', 'details']);
+export const INTERACTIVE_ROLES = new Set(['button', 'link', 'checkbox', 'radio', 'menuitem', 'tab', 'switch']);
 
 function isInteractiveElement(el: Element): boolean {
   if (INTERACTIVE_TAGS.has(el.tagName.toLowerCase())) return true;
@@ -167,6 +167,31 @@ export async function runPhaseA(doc: Document): Promise<PhaseAResult> {
   const root = doc.body;
   if (!root) return { skeleton, registry, textNodes };
 
+  // M12: nearest scrollable ancestor, memoized per element (and each
+  // element's own scrollability, one style read each). Walking every
+  // element's ancestors with getComputedStyle was O(n x depth) style reads
+  // on big pages. Parents are visited before children, so a lookup usually
+  // stops at the parent's memo entry.
+  const computeContextHints = createContextHints();
+  const scrollableMemo = new Map<Element, boolean>();
+  const scrollable = (el: Element): boolean => {
+    let value = scrollableMemo.get(el);
+    if (value === undefined) {
+      value = isScrollable(el, doc);
+      scrollableMemo.set(el, value);
+    }
+    return value;
+  };
+  const scrollAncestorMemo = new Map<Element, Element | null>();
+  const scrollAncestorOf = (el: Element): Element | null => {
+    const cached = scrollAncestorMemo.get(el);
+    if (cached !== undefined) return cached;
+    const parent = el.parentElement;
+    const found = !parent ? null : scrollable(parent) ? parent : scrollAncestorOf(parent);
+    scrollAncestorMemo.set(el, found);
+    return found;
+  };
+
   const stack: StackEntry[] = [{ node: root, parentId: null }];
   let lastYield = performance.now();
 
@@ -281,13 +306,8 @@ export async function runPhaseA(doc: Document): Promise<PhaseAResult> {
       const type = el.getAttribute('type');
       const name = el.getAttribute('name');
 
-      let scrollParentId: string | undefined;
-      for (let ancestor = el.parentElement; ancestor; ancestor = ancestor.parentElement) {
-        if (isScrollable(ancestor, doc)) {
-          scrollParentId = elementToId.get(ancestor);
-          break;
-        }
-      }
+      const scrollAncestor = scrollAncestorOf(el);
+      const scrollParentId = scrollAncestor ? elementToId.get(scrollAncestor) : undefined;
 
       const bbox = roundBBox(el.getBoundingClientRect());
 

@@ -19,37 +19,39 @@ Reading the tables:
 - `Face recall, …` sections (M11) come from `npm run bench:faces -- --label "<machine>" [--compute wasm|webgpu]`:
   recall of each face provider on a synthetic group photo, switched through the model setting only.
 
-## Dev laptop (i5-10210U, UHD 620 + MX230, Fedora) — 2026-09-24
+## Dev laptop (i5-10210U, UHD 620 + MX230, Fedora) — 2026-09-25
 
 chromium · Linux · 8 logical cores · ≥8 GB RAM  
-WebGPU adapter: intel / gen-9
+WebGPU adapter: nvidia / pascal
 
 | op (ms) | WASM p50 | WASM p95 | n | WebGPU p50 | WebGPU p95 | n |
 |---|---:|---:|---:|---:|---:|---:|
-| `dom.phase_a` | 5 | 61 | 13 | 6 | 68 | 13 |
+| `dom.phase_a` | 1 | 24 | 13 | 3 | 40 | 13 |
 | `dom.phase_b` | 0 | 1 | 13 | 0 | 1 | 13 |
-| `sanitize.regex` | 626 | 1058 | 13 | 1016 | 2728 | 13 |
-| `sanitize.ner` | 415 | 882 | 30 | 832 | 1514 | 30 |
-| `image.acquire` | 35 | 76 | 7 | 45 | 79 | 7 |
-| `image.face` | 98 | 175 | 7 | 138 | 162 | 7 |
+| `sanitize.regex` | 159 | 248 | 13 | 437 | 985 | 13 |
+| `sanitize.ner` | 57 | 166 | 29 | 218 | 486 | 28 |
+| `image.acquire` | 11 | 24 | 7 | 24 | 38 | 7 |
+| `image.face` | 23 | 39 | 7 | 233 | 456 | 7 |
 | ↳ `image.face` queue wait | 0 | 0 |  | 0 | 0 |  |
-| `image.ocr` | 1055 | 1355 | 7 | 1332 | 1596 | 7 |
-| ↳ `image.ocr` queue wait | 1 | 4 |  | 2 | 5 |  |
-| `image.qr` | 161 | 272 | 7 | 155 | 279 | 7 |
-| ↳ `image.qr` queue wait | 20 | 76 |  | 23 | 68 |  |
-| `image.redact` | 13 | 54 | 7 | 21 | 52 | 7 |
+| `image.ocr` | 230 | 329 | 7 | 464 | 660 | 7 |
+| ↳ `image.ocr` queue wait | 0 | 1 |  | 1 | 3 |  |
+| `image.qr` | 39 | 51 | 7 | 97 | 148 | 7 |
+| ↳ `image.qr` queue wait | 6 | 19 |  | 16 | 50 |  |
+| `image.redact` | 5 | 13 | 7 | 13 | 40 | 7 |
 | `image.cache_hit` | 0 | 0 | 21 | 0 | 0 | 21 |
 | `image.cache_miss` | 0 | 0 | 7 | 0 | 0 | 7 |
-| `context.assemble` | 3 | 6 | 13 | 3 | 7 | 13 |
-| `model.load` | 4216 | 4581 | 4 | 5837 | 6895 | 4 |
-| `model.warmup` | 4568 | 4821 | 4 | 7627 | 8736 | 4 |
+| `context.assemble` | 1 | 2 | 13 | 1 | 3 | 13 |
+| `model.load` | 1079 | 1088 | 4 | 1479 | 1550 | 4 |
+| `model.warmup` | 1131 | 1176 | 4 | 1679 | 2127 | 4 |
+| `image.cache_prune` | 8 | 8 | 1 | 5 | 5 | 1 |
 
 | model | load ms, WASM run (ran on) | load ms, WebGPU run (ran on) |
 |---|---:|---:|
-| `face/blazeface-mediapipe` | 2115 (wasm) | 3410 (webgpu) |
-| `ner/gravitee-bert-small-pii` | 4216 (wasm) | 5837 (webgpu) |
-| `ocr/tesseract-eng-lstm` | 4581 (wasm) | 6895 (wasm) |
-| `qr/zxing-wasm` | 471 (wasm) | 486 (wasm) |
+| `face/blazeface-mediapipe` | 578 (wasm) | – |
+| `face/scrfd-2.5g` | – | 1479 (webgpu) |
+| `ner/gravitee-bert-small-pii` | 1079 (wasm) | 1360 (webgpu) |
+| `ocr/tesseract-eng-lstm` | 1088 (wasm) | 1550 (wasm) |
+| `qr/zxing-wasm` | 136 (wasm) | 137 (wasm) |
 
 ## Face recall, dev laptop (wasm) — 2026-09-25
 

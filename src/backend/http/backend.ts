@@ -24,6 +24,14 @@ export const LOCKED_CAPABILITIES: BackendCapabilities = { maxImagesPerRequest: 0
 // is treated as failed (backend_error) rather than stalling the session.
 const REQUEST_TIMEOUT_MS = 30_000;
 
+// M12 (M11 Noticed 1): after a failed init(), later calls get the same
+// failure until this much time has passed. The compute host calls init()
+// per image lookup and per step, so a down server would otherwise get a
+// capabilities request each time. 10 s: long enough to collapse one step's
+// calls into one request, short enough that a server started after the
+// failure is picked up by the user's next try.
+export const INIT_RETRY_AFTER_MS = 10_000;
+
 export interface HttpBackendConfig {
   endpoint: string;
   token?: string; // §12.7: sent only as a Bearer header to this endpoint
@@ -32,6 +40,7 @@ export interface HttpBackendConfig {
 export interface HttpAgentBackendDeps {
   logger: RuntimeLogger;
   loadConfig: () => Promise<HttpBackendConfig | undefined>;
+  now?: () => number; // tests only; defaults to Date.now
 }
 
 interface Ready {
@@ -69,6 +78,7 @@ export class HttpAgentBackend implements AgentBackend {
   private readonly deps: HttpAgentBackendDeps;
   private ready: Ready | undefined;
   private initPromise: Promise<void> | undefined;
+  private failedAt: number | undefined;
 
   constructor(deps: HttpAgentBackendDeps) {
     this.deps = deps;
@@ -79,10 +89,16 @@ export class HttpAgentBackend implements AgentBackend {
   }
 
   // Memoized: the compute host may call init() several times per step. A
-  // failed init is forgotten, so the next call tries again.
+  // failed init is kept for INIT_RETRY_AFTER_MS, then forgotten, so a later
+  // call tries again.
   init(): Promise<void> {
-    this.initPromise ??= this.connect().catch((error: unknown) => {
+    const now = (this.deps.now ?? Date.now)();
+    if (this.failedAt !== undefined && now - this.failedAt >= INIT_RETRY_AFTER_MS) {
       this.initPromise = undefined;
+      this.failedAt = undefined;
+    }
+    this.initPromise ??= this.connect().catch((error: unknown) => {
+      this.failedAt = (this.deps.now ?? Date.now)();
       throw error;
     });
     return this.initPromise;

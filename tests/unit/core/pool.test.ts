@@ -65,6 +65,70 @@ describe('createMicroBatcher', () => {
   });
 });
 
+describe('createMicroBatcher with maxInFlight + sortKey (M12: length-bucketed NER batches)', () => {
+  // A run() the test resolves by hand, recording each batch it was given.
+  function manualRun() {
+    const batches: string[][] = [];
+    const releases: (() => void)[] = [];
+    const run = vi.fn(
+      (batch: string[]) =>
+        new Promise<string[]>((resolve) => {
+          batches.push(batch);
+          releases.push(() => resolve(batch.map((s) => s.toUpperCase())));
+        }),
+    );
+    return { run, batches, release: (i: number) => releases[i]?.() };
+  }
+
+  it('keeps at most maxInFlight runs going; the rest wait in the batcher', async () => {
+    const { run, batches, release } = manualRun();
+    const batcher = createMicroBatcher({ maxBatch: 2, maxWaitMs: 10, maxInFlight: 1, run });
+    const all = ['a', 'b', 'c', 'd', 'e'].map((s) => batcher.submit(s));
+    await vi.advanceTimersByTimeAsync(50);
+    expect(batches).toEqual([['a', 'b']]);
+    release(0);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(batches.length).toBe(2);
+    release(1);
+    await vi.advanceTimersByTimeAsync(0);
+    release(2);
+    expect(await Promise.all(all)).toEqual(['A', 'B', 'C', 'D', 'E']);
+    expect(batches.flat().sort()).toEqual(['a', 'b', 'c', 'd', 'e']);
+  });
+
+  it('batches the oldest waiting item with the ones closest to it in sortKey', async () => {
+    const { run, batches, release } = manualRun();
+    const batcher = createMicroBatcher({ maxBatch: 3, maxWaitMs: 10, maxInFlight: 1, sortKey: (s: string) => s.length, run });
+    // The first three go out at once (maxBatch reached, nothing in flight).
+    const first = ['x', 'y', 'z'].map((s) => batcher.submit(s));
+    const waiting = ['long-long-1', 'a', 'long-long-2', 'b', 'long-long-3', 'c'].map((s) => batcher.submit(s));
+    release(0);
+    await vi.advanceTimersByTimeAsync(0);
+    // Oldest waiting is 'long-long-1': it's joined by the other long ones,
+    // not by the short items between them.
+    expect(batches[1]).toEqual(['long-long-1', 'long-long-2', 'long-long-3']);
+    release(1);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(batches[2]).toEqual(['a', 'b', 'c']);
+    release(2);
+    expect(await Promise.all([...first, ...waiting])).toEqual(['X', 'Y', 'Z', 'LONG-LONG-1', 'A', 'LONG-LONG-2', 'B', 'LONG-LONG-3', 'C']);
+  });
+
+  it('frees its slot when a run rejects, and keeps going', async () => {
+    let calls = 0;
+    const run = vi.fn(async (batch: number[]) => {
+      calls += 1;
+      if (calls === 1) throw new Error('worker crashed');
+      return batch.map((n) => n * 10);
+    });
+    const batcher = createMicroBatcher({ maxBatch: 1, maxWaitMs: 10, maxInFlight: 1, run });
+    const p1 = batcher.submit(1);
+    const p2 = batcher.submit(2);
+    await expect(p1).rejects.toThrow('worker crashed');
+    expect(await p2).toBe(20);
+  });
+});
+
 describe('createWorkerPool (§9.6: bounded pool of long-lived workers)', () => {
   function deferred<T>() {
     let resolve!: (value: T) => void;

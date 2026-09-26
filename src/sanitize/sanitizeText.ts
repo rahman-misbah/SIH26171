@@ -3,6 +3,8 @@
 // §7.7: a per-session memo is checked first; a hit skips regex and NER
 // entirely and is logged as `sanitize.memo_hit`.
 
+import { findKnownValues } from './knownValues';
+import { tagMasked } from './maskRegex';
 import { decidePii } from './decide';
 import { matchRegexSpans } from './regex';
 import type { TokenMapImpl } from './tokenMap';
@@ -33,7 +35,11 @@ export interface SanitizeTextContext {
 
 export async function sanitizeText(text: string, ctx: SanitizeTextContext): Promise<string> {
   const t_start = performance.timeOrigin + performance.now();
-  const memoHit = await ctx.memo.lookup(ctx.origin, text, ctx.context);
+  // M12: values this session already tokenized on this origin (§7.6). A
+  // text containing one skips the memo: the memoized result may predate the
+  // value becoming known, and would then send it in the clear.
+  const knownSpans = findKnownValues(text, ctx.tokenMap.knownValues(ctx.origin));
+  const memoHit = knownSpans.length > 0 ? undefined : await ctx.memo.lookup(ctx.origin, text, ctx.context);
   if (memoHit !== undefined) {
     const t_end = performance.timeOrigin + performance.now();
     ctx.logger.record({
@@ -48,13 +54,17 @@ export async function sanitizeText(text: string, ctx: SanitizeTextContext): Prom
     return memoHit;
   }
 
-  const regexSpans = matchRegexSpans(text);
-  const [nerSpans = []] = await ctx.ner.tag([text]);
-  const spans = decidePii(text, regexSpans, nerSpans, {
+  // Known values are masked for NER like regex spans, and bypass the §7.5
+  // public-email check: a value tokenized once stays tokenized everywhere.
+  const overlapsKnown = (s: { start: number; end: number }) => knownSpans.some((k) => s.start < k.end && k.start < s.end);
+  const regexSpans = matchRegexSpans(text).filter((s) => !overlapsKnown(s));
+  const [nerSpans = []] = await tagMasked(ctx.ner, [text], [[...knownSpans, ...regexSpans]]);
+  const decided = decidePii(text, regexSpans, nerSpans, {
     pageOrigin: ctx.origin,
     hints: ctx.context,
     isMailtoHref: ctx.isMailtoHref,
   });
+  const spans = [...knownSpans, ...decided].sort((a, b) => a.start - b.start);
 
   let out: string;
   if (spans.length === 0) {

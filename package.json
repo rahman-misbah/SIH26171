@@ -16,7 +16,8 @@
     "bench": "node scripts/benchmark.ts",
     "bench:faces": "node scripts/faceRecall.ts",
     "serve-fixtures": "node scripts/serve-fixtures.ts",
-    "wire-schema": "node scripts/wireSchema.ts"
+    "wire-schema": "node scripts/wireSchema.ts",
+    "realsites": "node scripts/realSites.ts"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

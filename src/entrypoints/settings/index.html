@@ -77,12 +77,8 @@
 
       <fieldset id="model-fields">
         <legend>On-device models</legend>
-        <label for="face-model">Face detection</label>
-        <select id="face-model">
-          <option value="">Automatic (SCRFD on a GPU, BlazeFace otherwise)</option>
-          <option value="face/scrfd-2.5g">SCRFD-2.5G (tier 2, better on small faces, slower without a GPU)</option>
-          <option value="face/blazeface-mediapipe">BlazeFace (tier 1, fastest)</option>
-        </select>
+        <!-- One select per capability, built from src/models/catalog.ts (main.ts). -->
+        <div id="model-selects"></div>
         <label>Model changes apply the next time Edward starts (reload the extension or restart the browser).</label>
       </fieldset>
 

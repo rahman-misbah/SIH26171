@@ -20,7 +20,7 @@ describe('isSecretField', () => {
     expect(isSecretField(input({ type: 'text', id: 'otp', autocomplete: 'one-time-code' }))).toBe(true);
   });
 
-  it('flags a name matching /otp|cvv|cvc|pin/i even without autocomplete', () => {
+  it('flags a name like cvv even without autocomplete', () => {
     expect(isSecretField(input({ type: 'text', name: 'cvv' }))).toBe(true);
   });
 
@@ -30,6 +30,22 @@ describe('isSecretField', () => {
     expect(isSecretField(input({ type: 'text', autocomplete: 'cc-number' }))).toBe(true);
     expect(isSecretField(input({ type: 'text', autocomplete: 'cc-csc' }))).toBe(true);
     expect(isSecretField(input({ type: 'text', autocomplete: 'cc-exp-month' }))).toBe(true);
+  });
+
+  // M12: the name/id rule matches word parts, not substrings. On httpbin's
+  // form every `name="topping"` checkbox was flagged (top-PIN-g), and the
+  // same substring hit `pincode`, India's postal-code field.
+  it('flags otp/cvv/cvc/pin as a word part of name or id, in any naming style', () => {
+    for (const name of ['pin', 'PIN', 'userPin', 'user_pin', 'pin-number', 'pinNo', 'otp_code', 'txtOTP', 'otpInput', 'cvv2', 'card-cvc', 'CVV']) {
+      expect(isSecretField(input({ type: 'text', name })), name).toBe(true);
+    }
+    expect(isSecretField(input({ type: 'text', id: 'loginOtp' }))).toBe(true);
+  });
+
+  it('does not flag names that only contain those letters inside another word', () => {
+    for (const name of ['topping', 'shipping', 'shipping_address', 'mapping', 'spinner', 'opinion', 'hotpot', 'pincode', 'pinCode', 'pin_code', 'delivery-pincode']) {
+      expect(isSecretField(input({ type: 'text', name })), name).toBe(false);
+    }
   });
 
   it('does not flag an ordinary text input', () => {

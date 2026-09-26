@@ -38,6 +38,7 @@ export interface DecideStepInput {
   page: { url: string; title: string; viewport: { w: number; h: number }; scroll: { x: number; y: number } };
   skeleton: SkeletonNode[];
   contentResults: { node_id: string; field: ContentField; text: string }[];
+  truncated?: boolean; // M12 (§14.2)
   origin: string; // current page origin, for §13.4 rules 2-4
   images: ObservationImage[]; // §14.3, already selected/redacted; markers already on `skeleton`
 }
@@ -118,6 +119,7 @@ export function createAgentLoop(): AgentLoop {
         page: input.page,
         skeleton: input.skeleton,
         contentResults: input.contentResults,
+        truncated: input.truncated,
         history: session.history,
         images: input.images,
       });

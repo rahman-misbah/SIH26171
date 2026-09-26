@@ -160,7 +160,7 @@ Done when:
 - [x] Switching face tier needs only config; recall difference recorded
 - [x] Mock custom server drives one agent step
 
-## M12 — Real sites + freeze · `todo`
+## M12 — Real sites + freeze · `in progress`
 **Spec:** §16, §18 · **Estimate:** 1 day
 
 - Run on a spread of real sites; fix bugs; cut per the cut order.

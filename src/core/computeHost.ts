@@ -15,6 +15,7 @@ import type { LogRecord, RuntimeLogger, SessionRecord } from '@/logging';
 import { configureModelDeps, getActiveModelId, getModel, getModelSettings } from '@/models';
 import { onComputeHostRequest } from '@/platform';
 import type { MessageMap, Platform } from '@/platform';
+import { contentCharBudget } from '@/dom/contentBudget';
 import type { SkeletonNode } from '@/dom/types';
 import { sanitizeUnit } from '@/sanitize';
 import { warmStart, WARMUP_IMAGE_SIDE } from './warmStart';
@@ -67,8 +68,8 @@ async function capabilitiesOf(backend_id: string): Promise<BackendCapabilities> 
 }
 
 // §14.3: this step's sendable images, selected and sized for `backend_id`.
-async function imagesForStep(session_id: string, backend_id: string, skeleton: SkeletonNode[]) {
-  return prepareObservationImages(skeleton, sendableImages.forSession(session_id), await capabilitiesOf(backend_id), reencodeJpeg);
+async function imagesForStep(session_id: string, backend_id: string, skeleton: SkeletonNode[], viewportH: number) {
+  return prepareObservationImages(skeleton, sendableImages.forSession(session_id), await capabilitiesOf(backend_id), reencodeJpeg, viewportH);
 }
 
 function createDispatch(logger: RuntimeLogger) {
@@ -111,7 +112,7 @@ function createDispatch(logger: RuntimeLogger) {
       case 'assembleObservation': {
         const req = payload as MessageMap['request']['assembleObservation']['request'];
         const t_start = performance.timeOrigin + performance.now();
-        const prepared = await imagesForStep(req.session_id, req.backend_id, req.skeleton);
+        const prepared = await imagesForStep(req.session_id, req.backend_id, req.skeleton, req.page.viewport.h);
         const result = assembleObservation({ ...req, skeleton: prepared.skeleton, images: prepared.images });
         const t_end = performance.timeOrigin + performance.now();
         logger.record({
@@ -138,7 +139,7 @@ function createDispatch(logger: RuntimeLogger) {
         } catch (error) {
           return { status: 'fail', reason: error instanceof ReasonCodeError ? error.reason : 'backend_error' };
         }
-        const prepared = await imagesForStep(req.session_id, req.backend_id, req.skeleton);
+        const prepared = await imagesForStep(req.session_id, req.backend_id, req.skeleton, req.page.viewport.h);
         return agentLoop.decideStep({ ...req, skeleton: prepared.skeleton, images: prepared.images }, backend, logger);
       }
 
@@ -153,6 +154,11 @@ function createDispatch(logger: RuntimeLogger) {
         agentLoop.stopSession(req.session_id);
         sendableImages.clear(req.session_id);
         return {};
+      }
+
+      case 'contentBudget': {
+        const req = payload as MessageMap['request']['contentBudget']['request'];
+        return { max_chars: contentCharBudget((await capabilitiesOf(req.backend_id)).maxContextTokens) };
       }
 
       case 'imageLookup': {
@@ -237,5 +243,29 @@ export async function bootstrapComputeHost(platform: Platform): Promise<void> {
     blankImage: () => ({ data: new ImageData(WARMUP_IMAGE_SIDE, WARMUP_IMAGE_SIDE) }),
   });
 
+  // M12: bound the image cache (M9 Noticed 5). Not awaited, like warm
+  // start; a failure only means the cache stays as it was.
+  void pruneImageCache(logger, session_id);
+
   await logger.flush();
+}
+
+async function pruneImageCache(logger: RuntimeLogger, session_id: string): Promise<void> {
+  const t_start = performance.timeOrigin + performance.now();
+  let deleted: number | undefined;
+  try {
+    deleted = await new IdbImageCache().prune(Date.now());
+  } catch {
+    // outcome 'fail' below
+  }
+  const t_end = performance.timeOrigin + performance.now();
+  logger.record({
+    session_id,
+    op: 'image.cache_prune',
+    t_start,
+    t_end,
+    duration_ms: t_end - t_start,
+    outcome: deleted === undefined ? 'fail' : 'ok',
+    ...(deleted === undefined ? { reason: 'cache_prune_failed' as const } : { counts: { images: deleted } }),
+  });
 }

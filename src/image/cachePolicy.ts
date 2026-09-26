@@ -41,3 +41,21 @@ export function revalidationOutcome(
   if ('notModified' in result) return 'bump';
   return result.raw_sha256 === record.raw_sha256 ? 'bump' : 'reprocess';
 }
+
+// M12 pruning (M9 Noticed 5: records were never deleted, so browsing real
+// sites grew the store without bound). Runs at compute-host start.
+//
+// 24 h: well past the 30-minute TTL, so a record can still save a model run
+// by revalidation (§6.6) within a day's browsing; after that it's more likely
+// a page the user won't revisit.
+export const CACHE_PRUNE_AGE_MS = 24 * 60 * 60 * 1000;
+// 300 records: a redacted image is a JPEG of at most 1024 px on its longest
+// side (§6.4.7), typically 50-200 KB, so the store stays around tens of MB.
+// Least recently validated records go first.
+export const CACHE_MAX_RECORDS = 300;
+
+export function selectPrunable(entries: { key: string; validated_at: number }[], now: number): string[] {
+  const expired = entries.filter((e) => now - e.validated_at > CACHE_PRUNE_AGE_MS);
+  const kept = entries.filter((e) => now - e.validated_at <= CACHE_PRUNE_AGE_MS).sort((a, b) => b.validated_at - a.validated_at);
+  return [...expired, ...kept.slice(CACHE_MAX_RECORDS)].map((e) => e.key);
+}

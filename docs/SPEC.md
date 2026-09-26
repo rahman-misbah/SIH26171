@@ -1,4 +1,4 @@
-# Edward — Build Specification (v2.2)
+# Edward — Build Specification (v2.3, frozen)
 ### SIH26171 · On-device Visual Perception for Light-weight Browser Agents (ISRO)
 
 This document is the authoritative spec for building this system: architecture, data contracts, and design philosophy. Where it is silent on a detail, prefer the design philosophy (§2) over convenience.
@@ -6,6 +6,8 @@ This document is the authoritative spec for building this system: architecture, 
 A Python reference prototype (originally also called `edward`; kept in `reference/python-prototype/` to avoid confusion with this project's name) demonstrates the client-abstraction pattern required for §12. In this spec it is called **the Python prototype**. It is a **pattern reference only**; the system itself is written entirely in TypeScript (§2.14).
 
 *Name:* the project is called **Edward**, after Edward Snowden (renamed from PrivyVision in v2.2).
+
+*Frozen (v2.3, M12, 2026-09-25):* this is the as-built spec. Where the build differs from the original text, the section carries an *As built (Mn)* note, and §0.1 lists the changes made in the final milestone. The full reasoning for every deviation is in the Log in `docs/MILESTONES.md`.
 
 ---
 
@@ -26,6 +28,23 @@ A Python reference prototype (originally also called `edward`; kept in `referenc
 | D11 | Secret fields (passwords, OTP, card fields) are never read. | §5.1 |
 | D12 | Latency is a first-class requirement with its own section. | §15 |
 | D13 | (v2.1) Two-layer backend design: `AgentBackend` (observation → actions) over either the generic LLM backend (`ModelClient`, Python-prototype pattern) or a custom server via a versioned wire protocol. | §12 |
+
+### 0.1 v2.3: changes from the real-site pass (M12)
+
+Found by running the extension on 11 real sites (`docs/REAL_SITES.md`, `npm run realsites`). Before these changes, observations took 28–95 s on ordinary news, government and shopping pages, or timed out.
+
+| # | Change | Where |
+|---|---|---|
+| F1 | The §14.2 text budget is applied **before** sanitization, not after it: content past the budget is never sanitized or sent. The observation is marked `truncated`, and nodes where content was dropped are flagged `trimmed`. | §14.2 |
+| F2 | NER micro-batches are grouped by text length, one batch in flight at a time. | §7.2 |
+| F3 | NER runs on text with regex spans masked, as §7.2 always said. It hadn't been. | §7.2 |
+| F4 | Host-side image selection uses the content script's §6.7 queue order, and cache hits count against the send budget where they rank. The images sent no longer depend on what was cached. | §6.7, §14.3 |
+| F5 | The image cache is pruned at compute-host start: 24 h since validation, 300 records at most. | §6.6 |
+| F6 | A failed `HttpAgentBackend.init()` is retried only after 10 s. | §12.3 |
+| F7 | Phase A's hidden-element checks and ancestor walks are memoized or skipped when irrelevant, with identical output (a Wikipedia article: 4.7 s → 1.1 s). A `label[for]` lookup no longer builds a CSS selector from the page's ids (an id with a newline threw and failed the whole observation). | §5.1, §5.3 |
+| F8 | Secret-field names match word parts, not substrings: `topping`, `shipping` and `pincode` are no longer secret. | §5.1 |
+| F9 | Values already tokenized on an origin are found again before NER and reuse their token. | §7.6 |
+| F10 | The settings page offers the §9.4 model override for every capability (face, OCR, QR, NER), not only face. | §9.4 |
 
 ---
 
@@ -152,7 +171,7 @@ Everything else — DOM extraction, sanitization, image pipeline, model registry
 6. **Safari** — built from the same source; packaging via Xcode is documented but not part of the demo path.
 7. **Binary payloads over messaging** — Chromium extension messaging has historically been JSON-serialized (no `ArrayBuffer`/`ImageBitmap`), while Firefox/Safari use structured clone. `Transport` hides this: on Chromium it encodes pixel payloads as lossless PNG → base64 (unless structured clone is confirmed on the target Chrome version); elsewhere it passes buffers through. Consumers always send/receive `ArrayBuffer`. Since M9 the Chromium codec (`src/platform/binaryCodec.ts`) also carries `Uint8Array` (with its own marker), because `ObservationImage.data` is one and plain JSON would turn it into an index-keyed object.
 8. **Host permissions** — Firefox lets users withhold host permissions granted in the manifest, and custom backend origins are requested at runtime everywhere. The platform layer checks permissions at startup and asks for any that are missing (`requestHostPermission`); without them the agent does not start.
-9. **Compute host lifetime** — the Chromium offscreen document lives until closed. Firefox/Safari event pages can be unloaded when idle. During an agent session the content script keeps a `runtime.connect` port open with a periodic ping. If the host restarts anyway, the session is aborted (token map is lost with it, so nothing leaks) and models reload on the next start.
+9. **Compute host lifetime** — the Chromium offscreen document lives until closed. Firefox/Safari event pages can be unloaded when idle. During an agent session the content script keeps a `runtime.connect` port open with a periodic ping. If the host restarts anyway, the session is aborted (token map is lost with it, so nothing leaks) and models reload on the next start. *As built:* the keep-alive port was not built (M6). A host restart mid-session loses the token map, so tokens minted before it no longer resolve (blocked as `policy_unknown_token`, fail closed) instead of the session being aborted cleanly.
 10. **Build-tool manifest version defaults (WXT)** — WXT's default `manifestVersion` is 3 for Chrome but 2 for Firefox; `wxt.config.ts` sets `manifestVersion: 3` explicitly so Firefox builds as an MV3 event page as this section assumes.
 11. **Background field generation (WXT)** — WXT never writes both `background.scripts` and `background.service_worker` into one manifest. It builds one manifest per target from a single `defineBackground()` source and picks the field there: Firefox+MV3 → `background.scripts`, Chromium+MV3 → `background.service_worker`. Same net effect as "declares both", different mechanism (per-target generation, not a dual-field manifest).
 12. **`offscreen` permission on Firefox** — Firefox has no `chrome.offscreen` API; declaring the `offscreen` permission for a Firefox build produces a harmless `web-ext lint` warning. The manifest omits it on Firefox via WXT's per-browser `manifest` config function.
@@ -179,7 +198,7 @@ Chrome (primary), Edge (Chromium build, smoke test), Firefox (smoke test). Safar
 
 ### 5.1 Phase A — structural skeleton (fast, content-free)
 
-Walk the live DOM, including **open** shadow roots, **excluding all iframe content** (an `iframe_skipped` marker node is emitted instead). Closed shadow roots are unreachable and get a `shadow_closed_skipped` marker. For every kept node, capture:
+Walk the live DOM, including **open** shadow roots, **excluding all iframe content** (an `iframe_skipped` marker node is emitted instead). Closed shadow roots are unreachable and get a `shadow_closed_skipped` marker. *As built (M5):* **not marked.** `Element.shadowRoot` is `null` both for no shadow root and for a closed one, so detecting a closed one needs `attachShadow` patched at `document_start`, before page scripts run. That wasn't built. The content is still never read (fail closed), but the marker is missing, the one known gap in §2.10. For every kept node, capture:
 
 | Field | Notes |
 |---|---|
@@ -198,7 +217,7 @@ Walk the live DOM, including **open** shadow roots, **excluding all iframe conte
 | `flags` | Semantic class flags from a small whitelist (`error`, `disabled`, `active`, `hidden`); never raw class strings. |
 | `secret` | `true` for secret fields (below). |
 
-**Secret fields (never read):** `input[type=password]`; `autocomplete` values `one-time-code`, `current-password`, `new-password`, `cc-number`, `cc-csc`, `cc-exp*`; inputs whose name/id matches `/otp|cvv|cvc|pin/i`. Their `value` is never accessed; output is `value: "[SECRET]"`. Secrets are **not** tokenized, so the agent can never have them typed anywhere.
+**Secret fields (never read):** `input[type=password]`; `autocomplete` values `one-time-code`, `current-password`, `new-password`, `cc-number`, `cc-csc`, `cc-exp*`; inputs whose name/id matches `/otp|cvv|cvc|pin/i`. Their `value` is never accessed; output is `value: "[SECRET]"`. Secrets are **not** tokenized, so the agent can never have them typed anywhere. *As built (M12):* the name/id rule matches **word parts** (split on separators and camelCase; a trailing digit allowed, e.g. `cvv2`), not substrings, and `pin` followed by `code` is a postal code, not a PIN (`src/dom/secret.ts`). As a substring, `pin` flagged `topping`, `shipping` and `pincode` (India's postal-code field), so the agent couldn't fill an address. An all-lowercase run-together name such as `userpin` is no longer caught by this rule; `type=password` and `autocomplete` still are.
 
 Page-level metadata (not in the node tree): sanitized `title`, sanitized URL (§7.8), viewport size, scroll position.
 
@@ -282,6 +301,7 @@ OCR PII gets tokens in the same token map (§7.6) with source `{img_id, bbox}`. 
 - Key: `img_id` + `detector_set_version` (changes whenever the active model tiers change, so a stronger model is never skipped because of an old cached result).
 - Record: `{img_id, raw_sha256, etag?, last_modified?, redacted_image, redaction_counts, created_at, validated_at}`. **No raw bytes.**
 - TTL: 30 minutes from `validated_at`.
+- *As built (M12):* pruned at compute-host start (`src/image/cachePolicy.ts` `selectPrunable`, `cache.ts` `prune`). Records not validated for 24 h are deleted, and at most 300 are kept, least recently validated evicted first. Logged as op `image.cache_prune` (reason `cache_prune_failed` on failure).
 - On hit within TTL → use `redacted_image` directly.
 - On hit past TTL → revalidate: conditional request (`If-None-Match`/`If-Modified-Since`) first; `304` → bump `validated_at`. If no validators or `200` → hash the new bytes; same `raw_sha256` → bump `validated_at` without re-running models; different → reprocess.
 - Canvas-acquired images have no validators; revalidation re-reads pixels via canvas and compares hashes.
@@ -309,7 +329,7 @@ Both sources run the same code path: **Regex → NER → decision → tokenizati
 | PAN | `[A-Z]{5}[0-9]{4}[A-Z]`, 4th character in the valid holder-type set. |
 | Card number | 13–19 digits with separators, **Luhn** check. |
 | IFSC | `[A-Z]{4}0[A-Z0-9]{6}`. |
-| Optional if time | Passport (`[A-PR-WY][1-9]\d{6}`), voter ID (EPIC, `[A-Z]{3}\d{7}`), GSTIN, vehicle registration, dates of birth near "DOB". |
+| Optional if time | Passport (`[A-PR-WY][1-9]\d{6}`), voter ID (EPIC, `[A-Z]{3}\d{7}`), GSTIN, vehicle registration, dates of birth near "DOB". *As built:* all except the DOB rule. Dates are caught by NER's DATE_TIME label and redacted as OTHER. |
 
 Regex matches are high-confidence; checksum-failing numeric look-alikes fall through to NER rather than being dropped.
 
@@ -318,6 +338,10 @@ Regex matches are high-confidence; checksum-failing numeric look-alikes fall thr
 Runs on each unit's text (after regex spans are masked out). Uses the `PiiNer` capability (§9). Output spans are mapped from the model's labels onto the internal `PiiType` enum by a per-provider label map (e.g. `ORG` → not PII; `LOCATION` → `ADDRESS`; unknown label → treated as PII).
 
 Micro-batching (§2.5): the NER worker collects up to *B* units or waits up to *T* ms (e.g. B = 16, T = 10 ms), runs one batched inference, and returns results per unit.
+
+*As built (M12):*
+- **Masking.** Until M12, NER received the raw text, so a raw phone number next to "Call" made the model tag "Call" as a location (M9 Noticed 4). `src/sanitize/maskRegex.ts` now replaces each regex span with `[PII_<TYPE>]` before NER, and maps NER spans back to the original offsets. A span that overlaps a placeholder is dropped: the regex span already covers it. Both DOM text and OCR lines go through it.
+- **Length bucketing.** A batch is padded to its longest text, so mixing a 5-character link with a 2,000-character paragraph made every short text as costly as the long one. The micro-batcher (`src/core/pool.ts`) keeps one batch in flight on the single NER worker. Each next batch is the oldest waiting text plus the waiting texts closest to it in length, so nothing waits forever. `sanitize.ner` now times the inference alone, not the worker's queue.
 
 ### 7.3 Tier 3 — cut (decision D10)
 
@@ -347,6 +371,7 @@ The heuristic needs node context, which the compute host doesn't have. The conte
 - **Stable per session and origin**: the same `(origin, type, normalized value)` always gets the same token for the whole agent session, so `[PII_EMAIL_1]` means the same thing on step 1 and step 7.
 - Token map entry: `{token, type, value, origin, sources: [{node_id, field, offset} | {img_id, bbox}], created_at}`.
 - Lives in compute host memory only. Never persisted, never logged, never placed in a `SanitizedObservation`. Cleared when the agent session ends or the tab closes.
+- *As built (M12), known values:* before regex and NER, each text (DOM content and OCR lines) is searched for values already tokenized on this origin (`src/sanitize/knownValues.ts`): whole words, case-insensitive, longest first, values of 3+ characters. A match reuses its token, is masked for NER like a regex span, and skips the §7.5 public-email check. A text with a match bypasses the §7.7 memo, whose entry may predate the value becoming known. Found on httpbin: the task's full name was one `NAME` token, but NER read the same name typed into the form as two names and minted two new tokens, so the agent no longer saw the token it had typed. It also catches a known value where NER misses it later. Cached images (§6.6) are not re-checked.
 
 ### 7.7 Sanitization memo (latency)
 
@@ -421,6 +446,7 @@ interface ModelProvider<C extends Capability> {
 - **Runtime failure** (WebGPU device lost, OOM): the affected item fails closed (withheld/redacted). The registry may then switch that capability to the next lower tier for later items and logs the downgrade. An item is never passed through because its detector failed.
 - *As built (M11)* (`src/models/select.ts`, `registry.ts`, `settings.ts`):
   - **Override:** the model settings (`edward.modelSettings`, settings page "On-device models") name a provider id per capability. An override goes first even if its `requires` isn't met (user decision: SCRFD may run on wasm, just slower); the automatic order follows as its fallbacks. An unknown id is ignored and logged (`model.load`, `skipped`, `model_override_unknown`). Settings are read once at compute-host start, so a change applies after the extension or browser restarts.
+  - *As built (M12):* the settings page shows one override per capability (face, OCR, QR, NER), built from `src/models/catalog.ts`: plain data, so the page loads no provider or model library. A unit test keeps it in step with `models.config.ts`, so a new provider must be added to both. Face is still the only capability with a real choice; the others list their one provider.
   - **Load-failure downgrade:** a provider that fails to *load* hands over to the next candidate for the rest of the session (user decision), logged as `model.downgrade` with reason `model_load_failed` and the provider now in use. Only if every candidate fails does the capability fall back to fail-closed (withhold). A failure on a single item stays fail-closed for that item, as before; there is no mid-session tier switch after a successful load.
 
 ### 9.5 Model choices for this prototype
@@ -512,7 +538,7 @@ interface SessionRecord { session_id: string; started_at: number; device: Device
 - **No content, enforced by types.** Every field is an enum, number, boolean, or opaque ID. There is no free-text `message` field. No URLs, no page titles, no error messages from libraries (map them to a `ReasonCode`; unknown → `'unknown'`).
 - One shared logger; call sites use `logger.timed(op, meta, fn)` which records start/end/outcome automatically, including on thrown errors.
 - Content scripts send their records to the compute host in batches.
-- Storage: in-memory ring buffer (e.g. 10,000 records), flushed to IndexedDB every few seconds. Export as JSON/CSV from the settings page. A small aggregator produces: p50/p95 latency per op, cache hit rate, fail-closed count, redaction counts per page — the numbers for the presentation.
+- Storage: in-memory ring buffer (e.g. 10,000 records), flushed to IndexedDB every few seconds. Export as JSON/CSV from the settings page. *As built:* the export logic exists (`src/logging/export.ts`) but the settings page has no export button. Logs are read in the compute host's DevTools (IndexedDB `edward-logs`, or checklist snippet S2) and by the test and benchmark harnesses. A small aggregator produces: p50/p95 latency per op, cache hit rate, fail-closed count, redaction counts per page — the numbers for the presentation.
 - Logging never awaits I/O on the hot path.
 
 ---
@@ -603,6 +629,7 @@ Registry: `getClient()` → lazy singleton (mirrors the Python prototype's `conf
   - No retry on an invalid response (the server owns its prompting); 429 → `backend_rate_limited`, other failures → `backend_error`; 30 s timeout; redirects are refused, so an observation reaches only the configured endpoint.
   - Endpoint rules: HTTPS, or plain http on `localhost`/`127.0.0.1` only; no credentials, query or fragment in the URL. The manifest's `optional_host_permissions` gains `http://localhost/*` and `http://127.0.0.1/*`.
   - No CORS headers are needed on Chromium (host permission bypasses CORS; the e2e mock server sends none). Not yet checked on Firefox.
+  - *As built (M12):* a failed `init()` is kept for 10 s (`INIT_RETRY_AFTER_MS`) before the next attempt. The compute host calls `init()` per image lookup and per step, so a down server used to get a capabilities request each time (M11 Noticed 1).
   - JSON Schemas in `docs/wire/` are generated by `npm run wire-schema` (`ts-json-schema-generator`); a unit test fails if they drift from the types, or from the validator's limits (thought ≤ 200, ≤ 3 actions, wait ≤ 3000 ms, now also JSDoc annotations in `agent/schema.ts`).
 
 ### 12.4 Registry and settings (`src/backend/registry.ts`)
@@ -724,9 +751,15 @@ Multiple tabs, downloads, file upload, drag and drop, hover menus, keyboard shor
 
 1. Wait for: Phase A, all Phase B results, and processing of the images selected in step 3.
 2. Serialize the DOM tree as compact JSON: omit default/empty fields, short enums, integer boxes. Drop `visible: false` subtrees' text beyond a short cap. Target a token budget (e.g. ≤ 40% of `maxContextTokens`, and much less in practice for latency); if exceeded, trim non-interactive text from off-viewport regions first and mark `truncated: true`.
-3. **Image selection** uses `backend.capabilities`, never backend names: in-viewport first, then larger area; keep up to `maxImagesPerRequest`. Others get `image_omitted: "request_limit"` on their node. Re-encode to fit `maxImageBytes`. *As built (M9):* `src/agent/selectImages.ts` + `prepareImages.ts`. Re-encoding lowers JPEG quality first, then size (`src/image/fitBytes.ts`). An image that still doesn't fit is also marked `request_limit`. A visible image node with no sendable result gets `unreadable`, so no exclusion goes unmarked. The redacted images come from a per-session, compute-host-memory store holding only the current step's sendable images (`src/image/sendable.ts`).
+   *As built (M12)* (`src/dom/contentBudget.ts`), applied in the content script **before** sanitization (user decision). Trimming after sanitizing everything would have saved payload but not the 28–95 s spent on NER.
+   - **Budget:** `min(40% of maxContextTokens × 4 chars/token, 12,000 chars)`, asked from the compute host per observation (`contentBudget` message), plus at most 300 units. At about 50 NER sequences/s on the dev laptop, that keeps a busy page to a few seconds.
+   - **Order:** in-viewport interactive content (link text, button names, input values), then other in-viewport text, then off-viewport content nearest the viewport first, then `visible: false` content last. A long text's windows (§5.2) are kept or dropped together. Selection stops at the first group that doesn't fit, so a small far-away unit can't jump ahead of nearer content. Page URL, title and task are outside the budget.
+   - **Skeleton:** when anything was trimmed, nodes that no longer carry anything are dropped. A node is kept if it has kept content, is a secret field, has a marker, is an image in the viewport or still eligible to be sent, is interactive and in the viewport, or is an ancestor of a kept node. Where content or an interactive node was dropped, the node, or its nearest kept ancestor, gets `trimmed: true`, and the observation gets `truncated: true` (new optional fields on `SkeletonNode`/`SanitizedObservation`, in the wire schema). The system prompt and `docs/WIRE_PROTOCOL.md` tell the backend to scroll toward trimmed content.
+   - Not built: the rest of "compact JSON" (omitting default/empty fields). Nodes are serialized as they are.
+3. **Image selection** uses `backend.capabilities`, never backend names: in-viewport first, then larger area; keep up to `maxImagesPerRequest`. Others get `image_omitted: "request_limit"` on their node. Re-encode to fit `maxImageBytes`. *As built (M9):* `src/agent/selectImages.ts` + `prepareImages.ts`. Re-encoding lowers JPEG quality first, then size (`src/image/fitBytes.ts`). An image that still doesn't fit is also marked `request_limit`. A visible image node with no sendable result gets `unreadable`, so no exclusion goes unmarked. The redacted images come from a per-session, compute-host-memory store holding only the current step's sendable images (`src/image/sendable.ts`). *As built (M12):* selection ranks by §6.7's queue order (in viewport, then near-viewport, then the rest, each by area), the same order the content script processes in (`classifyImageNode`). The content script counts cache hits against the send budget where they rank, instead of all first (`src/dom/images.ts`). Before this, the images sent could change with the cache state (M10 Noticed 2).
 4. Build one `SanitizedObservation` (§12.1): task, step, page metadata, DOM, selected images, history. How it is turned into a vendor request is the backend's job (§12.2), not the assembler's.
 5. Final guard (defence in depth): before handing the observation to any backend, scan all its string fields with the Tier-1 regex set once more; any hit that is not on this step's allowlist of values the heuristic marked public (§7.5) → abort the step with `fail_closed` (indicates a pipeline bug). This is a check, not a sanitizer.
+   *As built (M5, M7):* the guard scans content strings only (task, page URL and title, node content), not opaque ids, which can pass a checksum by chance. It skips EMAIL matches instead of keeping an allowlist, because the per-node context behind a "public" decision is gone by this stage. Every other type still blocks. On real sites a separate test-time scan (`src/sanitize/residualScan.ts`) re-checks the outgoing text and counts any EMAIL separately (`docs/REAL_SITES.md`: 0 leak candidates on 11 sites).
 6. The token map is never touched by the assembler.
 
 ---
@@ -752,13 +785,15 @@ Multiple tabs, downloads, file upload, drag and drop, hover menus, keyboard shor
 State these in code comments and in the presentation:
 
 - Iframes (same- and cross-origin) — not traversed; marked. A privacy stance: payment widgets, auth and embedded chat are the riskiest content.
-- Closed shadow roots — unreachable; marked.
+- Closed shadow roots — unreachable, never read. *Not marked* (see §5.1 *As built*): detecting them needs `attachShadow` patched at `document_start`.
 - `<canvas>`, inline `<svg>`, `<video>` — not processed; marked.
 - QR/barcode content classification — all codes redacted.
 - Tier 3 LLM disambiguation — cut; ambiguous spans redacted.
 - Multi-tier models — built as an interface; tier 2 demonstrated for face only.
 - Custom reasoning server — the wire protocol is specified (docs/WIRE_PROTOCOL.md) and a working client exists (M11), tested against a mock server; no real server is built. The demo uses Groq through the generic LLM backend.
 - Secret fields — never read, never typed by the agent.
+- Page text past the §14.2 budget (M12) — never sanitized or sent; the observation is marked `truncated` and the agent scrolls to reach it.
+- Not built (M12 freeze): the keep-alive port (§4.3 item 9), the DOB regex (§7.1), the settings-page log export (§11.2), compact JSON beyond the budget (§14.2).
 - Safari — builds from the same code; not part of the demo.
 - Edge — runs the Chromium build (`.output/chrome-mv3`), which the Chrome e2e suite covers; the manual Edge smoke test (§4.4, §18.5) was cut in M10 (user decision, 2026-09-25) and never run.
 - API key in extension storage — acceptable for a prototype, not production.
@@ -798,7 +833,7 @@ edward/
   public/                           # bundled wasm, worker glue, model weights (tier 1)
   tests/
     fixtures/                       # local HTML pages with synthetic PII
-    unit/  e2e/  bench/
+    unit/  e2e/  bench/  realsites/     # realsites: M12 real-site pass (live internet, counts only)
   CLAUDE.md
 ```
 
@@ -812,6 +847,7 @@ edward/
 4. **Model fixture sets:** Indian names/addresses for NER recall; small-face and group photos for face recall. Record recall per provider — slide material.
 5. **Cross-browser smoke:** Chrome (e2e), Edge and Firefox (manual checklist: load, observe, one action).
 6. **Benchmark:** §15.
+7. **Real-site pass** *(added in M12)*: `npm run realsites -- --label "<machine>"` loads 11 public sites (`tests/realsites/sites.ts`) logged out, runs one observation each with the mock backend, and records counts and timings only (`docs/REAL_SITES.md`). A residual scan re-runs the regex tier over the outgoing text: 0 leak candidates.
 
 All fixture PII is synthetic. Never use real people's data.
 
@@ -831,6 +867,8 @@ Vertical slice first, then depth.
 | 9 | Integration across real sites; bug fixing; cut per §16; export numbers for slides. |
 
 Cut order under time pressure: tier-2 face → cache revalidation (keep TTL only) → background-image support → public-email heuristic (treat all emails as private) → Firefox polish.
+
+*As built:* nothing on the cut order was cut. Tier-2 face (SCRFD), cache revalidation, background images, the public-email heuristic and the Firefox pass all shipped. What was cut or not built instead: the Edge smoke test (M10), Tier-3 LLM disambiguation (D10), the `shadow_closed_skipped` marker (§5.1), the keep-alive port (§4.3 item 9), the DOB regex (§7.1), the settings-page log export (§11.2), and compact JSON beyond the budget (§14.2). See §16.
 
 ---
 

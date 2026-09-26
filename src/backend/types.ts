@@ -26,6 +26,9 @@ export interface SanitizedObservation {
   dom: SanitizedNode[]; // §5 / §14
   images: ObservationImage[]; // already redacted and selected (§14)
   history: { step: number; thought: string; actions: Action[]; results: ActionResult[] }[]; // sanitized, no old images
+  // M12 (§14.2): present when page content was left out for the budget;
+  // nodes flagged `trimmed` show where. Absent means nothing was trimmed.
+  truncated?: true;
 }
 
 export interface BackendCapabilities {

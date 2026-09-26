@@ -5,6 +5,7 @@
 // forwarded to the host's logger, which has the only extension-origin
 // IndexedDB (a content-script `indexedDB` would hit the *page's* origin).
 
+import { MAX_BUDGET_UNITS, pruneSkeleton, selectUnits } from './contentBudget';
 import { buildContentUnits } from './contentUnits';
 import { acquirePageImages } from './images';
 import { runPhaseA } from './skeleton';
@@ -32,6 +33,7 @@ export interface StepObservation {
   page: { url: string; title: string; viewport: { w: number; h: number }; scroll: { x: number; y: number } };
   task: string; // sanitized
   contentResults: { node_id: string; field: ContentField; text: string }[];
+  truncated: boolean; // M12 (§14.2): content was left out for the budget
 }
 
 const CHUNK_SIZE = 200;
@@ -72,8 +74,14 @@ export async function buildStepObservation(transport: Transport, doc: Document, 
     counts: { units: skeleton.length },
   });
 
+  // M12 (§14.2): asked before Phase B so the budget is known when units are
+  // chosen. Page units (task/url/title) are outside the budget.
+  const { max_chars } = await transport.request('contentBudget', { backend_id });
+
   const phaseBStart = performance.timeOrigin + performance.now();
-  const units = buildContentUnits(skeleton, registry, textNodes);
+  const allPageUnits = buildContentUnits(skeleton, registry, textNodes);
+  const viewportHeight = doc.defaultView?.innerHeight ?? 0;
+  const { kept: units, trimmed } = selectUnits(skeleton, allPageUnits, { maxChars: max_chars, maxUnits: MAX_BUDGET_UNITS, viewportHeight });
   const pageUnits: ContentUnit[] = [
     { unit_id: TASK_UNIT_ID, node_id: '__task__', field: 'text' as ContentField, text: task },
     { unit_id: URL_UNIT_ID, node_id: '__page__', field: 'href' as ContentField, text: doc.location.href },
@@ -108,6 +116,9 @@ export async function buildStepObservation(transport: Transport, doc: Document, 
     }),
   ]);
 
+  // After images: their pipeline writes markers onto these same objects.
+  const prunedSkeleton = pruneSkeleton(skeleton, units, trimmed);
+
   const sanitizedById = new Map<string, string>();
   for (const { results } of chunkResults) {
     for (const result of results) sanitizedById.set(result.unit_id, result.text);
@@ -121,7 +132,7 @@ export async function buildStepObservation(transport: Transport, doc: Document, 
 
   return {
     registry,
-    skeleton,
+    skeleton: prunedSkeleton,
     page: {
       url: sanitizedById.get(URL_UNIT_ID) ?? '',
       title: sanitizedById.get(TITLE_UNIT_ID) ?? '',
@@ -130,6 +141,7 @@ export async function buildStepObservation(transport: Transport, doc: Document, 
     },
     task: sanitizedById.get(TASK_UNIT_ID) ?? '',
     contentResults,
+    truncated: trimmed.size > 0,
   };
 }
 
@@ -144,5 +156,6 @@ export async function observePage(transport: Transport, doc: Document, options: 
     page: built.page,
     skeleton: built.skeleton,
     contentResults: built.contentResults,
+    truncated: built.truncated,
   });
 }

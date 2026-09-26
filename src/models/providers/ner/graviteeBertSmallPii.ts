@@ -86,6 +86,12 @@ export const graviteeBertSmallPii: ModelProvider<'ner'> = {
     const batcher = createMicroBatcher<string, WorkerSpan[]>({
       maxBatch: MICRO_BATCH_MAX,
       maxWaitMs: MICRO_BATCH_MAX_WAIT_MS,
+      // M12: one batch at a time on the single NER worker (§9.6), so the
+      // rest wait in the batcher and can be grouped by length -- each batch
+      // is padded to its longest text. `sanitize.ner` now times the
+      // inference alone rather than inference plus the worker's backlog.
+      maxInFlight: 1,
+      sortKey: (text) => text.length,
       // §9.6: one `sanitize.ner` LogRecord per flushed micro-batch (real
       // inference call), not per text -- tagged with the compute-host
       // session (ctx.session_id), the same scope `model.load` uses, since a

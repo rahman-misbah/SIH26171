@@ -47,6 +47,12 @@ export class TokenMapImpl {
     return token;
   }
 
+  // M12: the raw values tokenized on `origin`, for the known-value pass
+  // (knownValues.ts). Compute-host memory only, like the rest of the map.
+  knownValues(origin: string): { type: PiiType; value: string }[] {
+    return [...this.byToken.values()].filter((e) => e.origin === origin).map((e) => ({ type: e.type, value: e.value }));
+  }
+
   resolve(token: string): string | undefined {
     return this.byToken.get(token)?.value;
   }

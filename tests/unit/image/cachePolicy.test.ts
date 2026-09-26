@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { CACHE_TTL_MS, cacheKey, decideCache, revalidationOutcome } from '@/image/cachePolicy';
+import { CACHE_MAX_RECORDS, CACHE_PRUNE_AGE_MS, CACHE_TTL_MS, cacheKey, decideCache, revalidationOutcome, selectPrunable } from '@/image/cachePolicy';
 import type { ImageCacheRecord } from '@/image/types';
 
 function record(overrides: Partial<ImageCacheRecord> = {}): ImageCacheRecord {
@@ -67,5 +67,33 @@ describe('revalidationOutcome (§6.6)', () => {
 
   it('reprocesses when the new bytes hash differently', () => {
     expect(revalidationOutcome(record(), { raw_sha256: 'e'.repeat(64) })).toBe('reprocess');
+  });
+});
+
+describe('selectPrunable (M12: cache records were never deleted)', () => {
+  const NOW = 10 * CACHE_PRUNE_AGE_MS;
+
+  it('keeps nothing older than the prune age, measured from validated_at', () => {
+    const entries = [
+      { key: 'old', validated_at: NOW - CACHE_PRUNE_AGE_MS - 1 },
+      { key: 'edge', validated_at: NOW - CACHE_PRUNE_AGE_MS },
+      { key: 'new', validated_at: NOW - 1 },
+    ];
+    expect(selectPrunable(entries, NOW)).toEqual(['old']);
+  });
+
+  it('keeps a stale-but-young record: it can still be revalidated (§6.6)', () => {
+    expect(selectPrunable([{ key: 'stale', validated_at: NOW - CACHE_TTL_MS - 1 }], NOW)).toEqual([]);
+  });
+
+  it('evicts the least recently validated records beyond the cap', () => {
+    const entries = Array.from({ length: CACHE_MAX_RECORDS + 2 }, (_, i) => ({ key: `k${i}`, validated_at: NOW - 1_000 + i }));
+    const shuffled = [...entries].reverse();
+    expect(selectPrunable(shuffled, NOW).sort()).toEqual(['k0', 'k1']);
+  });
+
+  it('prunes nothing from an empty or small cache', () => {
+    expect(selectPrunable([], NOW)).toEqual([]);
+    expect(selectPrunable([{ key: 'a', validated_at: NOW }], NOW)).toEqual([]);
   });
 });

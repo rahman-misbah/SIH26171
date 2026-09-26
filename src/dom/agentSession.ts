@@ -64,6 +64,7 @@ export function attachAgentSession(platform: Platform, doc: Document): AgentSess
           page: built.page,
           skeleton: built.skeleton,
           contentResults: built.contentResults,
+          truncated: built.truncated,
           origin,
           backend_id,
         });

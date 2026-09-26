@@ -1,12 +1,14 @@
 // §12.4: backend/provider selection UI. Custom (openai-compatible) base
 // URLs and custom agent server endpoints (M11, §12.3) need a runtime host
 // permission grant (§12.4, §4.3.8) -- Groq's fixed host is already covered
-// by the manifest's static host_permissions. M11 also adds the §9.4 model
-// override (face tier).
+// by the manifest's static host_permissions. M11 added the §9.4 model
+// override for face; M12 extends it to every capability (src/models/catalog.ts).
 
 import { getBackendSettings, parseHttpEndpoint, setBackendSettings } from '@/backend';
 // The settings module directly, not '@/models': the barrel also pulls in the
 // registry and every provider, which this page never uses.
+import { MODEL_CATALOG } from '@/models/catalog';
+import type { Capability } from '@/models/capabilities';
 import { getModelSettings, setModelSettings } from '@/models/settings';
 import { getPlatform } from '@/platform';
 
@@ -20,9 +22,28 @@ const oacKeyInput = document.getElementById('oac-key') as HTMLInputElement;
 const oacModelInput = document.getElementById('oac-model') as HTMLInputElement;
 const httpEndpointInput = document.getElementById('http-endpoint') as HTMLInputElement;
 const httpTokenInput = document.getElementById('http-token') as HTMLInputElement;
-const faceModelSelect = document.getElementById('face-model') as HTMLSelectElement;
+const modelSelectsEl = document.getElementById('model-selects') as HTMLDivElement;
 const saveButton = document.getElementById('save') as HTMLButtonElement;
 const statusEl = document.getElementById('status') as HTMLDivElement;
+
+// One labelled select per capability: "Automatic" (no override, value '')
+// and then each provider in the registry's preference order.
+const modelSelects = new Map<Capability, HTMLSelectElement>();
+for (const entry of MODEL_CATALOG) {
+  const label = document.createElement('label');
+  label.htmlFor = `model-${entry.capability}`;
+  label.textContent = entry.label;
+  const select = document.createElement('select');
+  select.id = `model-${entry.capability}`;
+  for (const { id, label: text } of [{ id: '', label: entry.automatic }, ...entry.options]) {
+    const option = document.createElement('option');
+    option.value = id;
+    option.textContent = text;
+    select.append(option);
+  }
+  modelSelectsEl.append(label, select);
+  modelSelects.set(entry.capability, select);
+}
 
 async function load(): Promise<void> {
   const settings = await getBackendSettings(platform.settings);
@@ -34,7 +55,8 @@ async function load(): Promise<void> {
   oacModelInput.value = settings.llm['openai-compatible']?.model ?? '';
   httpEndpointInput.value = settings.http?.endpoint ?? '';
   httpTokenInput.value = settings.http?.token ?? '';
-  faceModelSelect.value = (await getModelSettings(platform.settings)).overrides.face ?? '';
+  const { overrides } = await getModelSettings(platform.settings);
+  for (const [capability, select] of modelSelects) select.value = overrides[capability] ?? '';
 }
 
 saveButton.addEventListener('click', () => {
@@ -76,9 +98,9 @@ saveButton.addEventListener('click', () => {
       },
       http: httpEndpointInput.value.trim() ? { endpoint: httpEndpointInput.value.trim(), token: httpTokenInput.value || undefined } : undefined,
     });
-    await setModelSettings(platform.settings, {
-      overrides: faceModelSelect.value ? { face: faceModelSelect.value } : {},
-    });
+    const overrides: Partial<Record<Capability, string>> = {};
+    for (const [capability, select] of modelSelects) if (select.value) overrides[capability] = select.value;
+    await setModelSettings(platform.settings, { overrides });
 
     statusEl.textContent = statusEl.textContent || 'Saved.';
   })();

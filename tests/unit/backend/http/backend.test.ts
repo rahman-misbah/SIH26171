@@ -2,7 +2,7 @@
 // covered by tests/e2e/httpBackend.spec.ts (a mock server on localhost).
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { HttpAgentBackend, LOCKED_CAPABILITIES } from '@/backend/http/backend';
+import { HttpAgentBackend, INIT_RETRY_AFTER_MS, LOCKED_CAPABILITIES } from '@/backend/http/backend';
 import type { SanitizedObservation } from '@/backend/types';
 import { createLogger, ReasonCodeError } from '@/logging';
 import { createFakeSink } from '../../logging/fakeSink';
@@ -110,11 +110,18 @@ describe('HttpAgentBackend init()', () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it('fetches capabilities once, and retries after a failed init', async () => {
+  it('fetches capabilities once, and retries a failed init only after the back-off', async () => {
     let calls = 0;
     const fetchMock = stubServer(() => (++calls === 1 ? json(503, {}) : json(200, CAPS)));
-    const { backend: b } = backend();
+    let now = 0;
+    const b = new HttpAgentBackend({ logger: createLogger(createFakeSink()), loadConfig: async () => ({ endpoint: 'https://agent.example.com' }), now: () => now });
     expect(await reasonOf(b.init())).toBe('backend_error');
+    // M12 (M11 Noticed 1): the compute host calls init() per image lookup
+    // and per step; a down server must not get a request each time.
+    now = INIT_RETRY_AFTER_MS - 1;
+    expect(await reasonOf(b.init())).toBe('backend_error');
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    now = INIT_RETRY_AFTER_MS;
     await b.init();
     await b.init();
     expect(fetchMock).toHaveBeenCalledTimes(2);

@@ -98,20 +98,24 @@ export async function acquirePageImages(
     return;
   }
 
-  const needPixels = new Set<string>();
-  let readyFromCache = 0;
+  const cached = new Map<string, ImageOutcome>();
   for (const result of lookups) {
     if (result.status === 'done') {
       mark(result.node_id, result.outcome);
-      if (result.outcome === 'ok') readyFromCache++;
-    } else needPixels.add(result.node_id);
+      cached.set(result.node_id, result.outcome);
+    }
   }
 
-  // Cache hits count against the budget first; if more are ready than the
-  // backend takes, §14.3 selection marks the surplus at assembly.
-  const toProcess = resolved.filter((r) => needPixels.has(r.ref.node_id));
-  const budget = Math.max(0, sendBudget - readyFromCache);
-  const skipped = await runWithBudget(toProcess, { limit: DISPATCH_CONCURRENCY, budget }, async ({ img, ref }) => {
+  // M12 (M10 Noticed 2): every candidate goes through the budget in §6.7
+  // order, a cache hit counting where it ranks (it resolves at once). Before,
+  // all cache hits counted first, so a cached low-ranked image could use up
+  // the budget ahead of a higher-ranked one that needed pixels, and the
+  // images sent changed with the cache state. §14.3 selection uses the same
+  // order (selectImages.ts), so it picks the same ones.
+  const skipped = await runWithBudget(resolved, { limit: DISPATCH_CONCURRENCY, budget: Math.max(0, sendBudget) }, async ({ img, ref }) => {
+    const hit = cached.get(ref.node_id);
+    if (hit !== undefined) return hit === 'ok';
+
     const t_start = performance.timeOrigin + performance.now();
     const read = img ? await readPixels(img) : ({ ok: false, reason: 'unreadable' } as const);
     const t_end = performance.timeOrigin + performance.now();
@@ -137,6 +141,7 @@ export async function acquirePageImages(
       return false;
     }
   });
-  // Never processed: the backend wouldn't take them this step (§14.3).
-  for (const { ref } of skipped) mark(ref.node_id, 'request_limit');
+  // Never processed: the backend wouldn't take them this step (§14.3). A
+  // skipped cache hit is already sendable; selection marks it if needed.
+  for (const { ref } of skipped) if (!cached.has(ref.node_id)) mark(ref.node_id, 'request_limit');
 }

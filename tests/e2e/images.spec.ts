@@ -265,6 +265,16 @@ test('selection: only maxImagesPerRequest images are sent, the rest are marked r
     test.info().annotations.push({ type: 'measurement', description: `images.html: 7 images, 4 sent, ${redacted.size} processed` });
     // The budget stops processing early: fewer than all 7 were processed.
     expect(redacted.size).toBeLessThan(7);
+
+    // M12 (M10 Noticed 2): a second load, now partly answered from the
+    // cache, sends the same images. Node ids are assigned in DOM order, so
+    // they match across loads of the same page.
+    const again = await context.newPage();
+    const second = await observe(again, `${server.url}pages/images.html?reload=1`);
+    await again.close();
+    if (second.status !== 'ok') throw new Error('blocked');
+    const secondSent = new Set((second.observation.images as unknown as ObservedImage[]).map((i) => i.node_id));
+    expect([...secondSent].sort()).toEqual([...sentNodes].sort());
   } finally {
     await server.close();
   }

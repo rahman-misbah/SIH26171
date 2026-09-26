@@ -3,6 +3,7 @@
 // Pure: the caller supplies which nodes have a sendable (already redacted)
 // image and writes the resulting markers.
 
+import { classifyImageNode } from '@/dom/imageCandidates';
 import type { SkeletonNode } from '@/dom/types';
 
 export interface ImageSelection {
@@ -13,7 +14,14 @@ export interface ImageSelection {
   missing: string[];
 }
 
-export function selectImages(skeleton: SkeletonNode[], available: ReadonlySet<string>, maxImages: number): ImageSelection {
+// `viewportH` places off-viewport images in §6.7's near/far bands; without
+// it every off-viewport image counts as near (area decides, as before M12).
+export function selectImages(
+  skeleton: SkeletonNode[],
+  available: ReadonlySet<string>,
+  maxImages: number,
+  viewportH = Number.POSITIVE_INFINITY,
+): ImageSelection {
   const sendable: SkeletonNode[] = [];
   const missing: string[] = [];
   for (const node of skeleton) {
@@ -23,11 +31,20 @@ export function selectImages(skeleton: SkeletonNode[], available: ReadonlySet<st
     else if (node.visible) missing.push(node.node_id);
   }
 
-  // In-viewport first, then larger rendered area. sort() is stable, so ties
-  // keep DOM order.
-  const ordered = [...sendable].sort(
-    (a, b) => Number(b.in_viewport) - Number(a.in_viewport) || b.bbox.w * b.bbox.h - a.bbox.w * a.bbox.h,
-  );
+  // M12: the content script's §6.7 queue order (classifyImageNode), which
+  // refines §14.3's "in-viewport first, then larger area" with the near-
+  // viewport band. Using the same order on both sides makes the images sent
+  // independent of which ones were cached (M10 Noticed 2). sort() is
+  // stable, so ties keep DOM order.
+  const rank = (node: SkeletonNode): [number, number] => {
+    const cls = classifyImageNode(node, viewportH);
+    return cls.kind === 'queue' ? [cls.priority, cls.area] : [3, node.bbox.w * node.bbox.h];
+  };
+  const ordered = [...sendable].sort((a, b) => {
+    const [pa, areaA] = rank(a);
+    const [pb, areaB] = rank(b);
+    return pa - pb || areaB - areaA;
+  });
   const limit = Math.max(0, maxImages);
   return {
     selected: ordered.slice(0, limit).map((n) => n.node_id),
