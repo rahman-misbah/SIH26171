@@ -58,6 +58,30 @@ describe('createOpenAiCompatibleClient', () => {
     ]);
   });
 
+  it('merges extraBody fields without letting them override model, messages or response_format', async () => {
+    const fetchMock = vi.fn<typeof fetch>(async () => jsonResponse(200, { choices: [{ message: { content: '{}' } }] }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const client = createOpenAiCompatibleClient({
+      id: 't',
+      baseUrl: 'https://x',
+      apiKey: 'k',
+      model: 'real-model',
+      capabilities: CAPS,
+      extraBody: { routing: { a: 1 }, model: 'injected', messages: [], response_format: { type: 'text' } },
+    });
+    await client.generate({ system: 's', wantJson: true, items: [{ kind: 'text', text: 'hello' }] });
+
+    const body = JSON.parse((fetchMock.mock.calls[0]![1] as RequestInit).body as string) as Record<string, unknown>;
+    expect(body.routing).toEqual({ a: 1 });
+    expect(body.model).toBe('real-model');
+    expect(body.response_format).toEqual({ type: 'json_object' });
+    expect(body.messages).toEqual([
+      { role: 'system', content: 's' },
+      { role: 'user', content: [{ type: 'text', text: 'hello' }] },
+    ]);
+  });
+
   it('returns the model text and usage on success', async () => {
     vi.stubGlobal(
       'fetch',

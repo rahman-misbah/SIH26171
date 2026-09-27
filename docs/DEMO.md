@@ -132,7 +132,7 @@ slides come from.
 ## Scene 8: extensibility (1 min)
 
 Open the settings page:
-- **Reasoning backend:** Groq, any OpenAI-compatible server (e.g. a local model), or a custom agent
+- **Reasoning backend:** Groq, OpenRouter, any OpenAI-compatible server (e.g. a local model), or a custom agent
   server that speaks the Edward wire protocol (`docs/WIRE_PROTOCOL.md`). Each receives the same
   `SanitizedObservation`.
 - **Face detection:** the tier-1 (BlazeFace) and tier-2 (SCRFD) providers switch with one setting;

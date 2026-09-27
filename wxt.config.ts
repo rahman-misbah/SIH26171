@@ -17,8 +17,9 @@ export default defineConfig({
     content_security_policy: {
       extension_pages: "script-src 'self' 'wasm-unsafe-eval'; object-src 'self';",
     },
-    // The only fixed backend origin the extension talks to by default (SPEC §12.6).
-    host_permissions: ['https://api.groq.com/*'],
+    // The fixed backend origins of the known LLM vendors (SPEC §12.4, §12.6;
+    // OpenRouter added in M12, §0.1 F11). Custom endpoints are requested at runtime.
+    host_permissions: ['https://api.groq.com/*', 'https://openrouter.ai/*'],
     // Requested at runtime for custom backend origins (SPEC §12.4, §4.3.8).
     // Plain http only on the local machine, for a development agent server
     // (§12.4, M11); match patterns without a port match every port.

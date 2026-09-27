@@ -29,11 +29,11 @@ observation into the page. Run `npm run build` again before using Edward on real
 **Firefox:** `about:debugging#/runtime/this-firefox` → *Load Temporary Add-on* →
 `.output/firefox-mv3/manifest.json`. It's removed when Firefox closes, and settings don't
 survive re-adding it (*Reload* keeps them). Check `about:addons` → Edward → *Permissions*:
-site access and `api.groq.com` must be on.
+site access and `api.groq.com` (or `openrouter.ai`) must be on.
 
 **Settings** (Chrome: Edward → *Details* → *Extension options*; Firefox: `about:addons` → Edward
 → *Preferences*):
-- **Reasoning backend:** Groq (paste an API key; model optional), any OpenAI-compatible server, or
+- **Reasoning backend:** Groq or OpenRouter (paste an API key; model optional), any OpenAI-compatible server, or
   a custom agent server ([`docs/WIRE_PROTOCOL.md`](docs/WIRE_PROTOCOL.md)).
 - **On-device models:** one choice per capability. Without a working GPU, set face detection to
   SCRFD; *Automatic* then uses BlazeFace, which misses faces in group photos.
@@ -54,7 +54,7 @@ Everything runs in the **compute host**; open its DevTools:
 - Chrome/Edge: extensions page → Edward → *Inspect views: offscreen.html*
 - Firefox: `about:debugging` → Edward → *Inspect* (the background page)
 
-**Network tab** (turn on *Preserve log* / *Persist Logs*, filter by `groq`): each
+**Network tab** (turn on *Preserve log* / *Persist Logs*, filter by `groq` or `openrouter`): each
 `chat/completions` request body is exactly what the backend received (the task and page with
 tokens, `[SECRET]` fields, exclusion markers like `iframe_skipped`, `truncated`/`trimmed` where
 the page-text budget cut content). Images are `data:image/jpeg;base64,…` URLs: paste one into a

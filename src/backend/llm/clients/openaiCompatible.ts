@@ -2,9 +2,9 @@
 // 'openai-compatible', base URL from settings) and a helper that vendor
 // files may build on; it never contains vendor-specific branches." The only
 // place that calls `fetch()` for an LLM vendor (§12.6: no SDK, smaller
-// bundle, no Node-isms) -- this file and groq.ts (which configures this one)
-// are the two allowed to live under src/backend/llm/clients/ (SPEC §12.5,
-// CLAUDE.md boundaries).
+// bundle, no Node-isms) -- this file and the vendor files that configure it
+// (groq.ts, openrouter.ts) are the only ones under src/backend/llm/clients/
+// (SPEC §12.5, CLAUDE.md boundaries).
 
 import type { ClientCapabilities, ImageContent, ModelClient, ModelRequest, ModelResponse, TextContent } from '../types';
 import { ReasonCodeError } from '@/logging';
@@ -17,6 +17,10 @@ export interface OpenAiCompatibleConfig {
   capabilities: ClientCapabilities;
   timeoutMs?: number; // per-attempt; §12.6 default 30s
   maxRetries?: number; // §12.6: "one retry with backoff on 429/5xx"
+  // Extra top-level request fields a vendor file needs (e.g. OpenRouter's
+  // routing block). Vendor-neutral: this file never inspects them. Spread
+  // first, so they can never replace model, messages or response_format.
+  extraBody?: Record<string, unknown>;
 }
 
 const DEFAULT_TIMEOUT_MS = 30_000;
@@ -41,6 +45,7 @@ function toContentPart(item: TextContent | ImageContent): ChatContentPart {
 
 function buildBody(config: OpenAiCompatibleConfig, req: ModelRequest): unknown {
   return {
+    ...config.extraBody,
     model: config.model,
     messages: [
       { role: 'system', content: req.system },

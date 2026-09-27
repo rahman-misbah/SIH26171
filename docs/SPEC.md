@@ -45,6 +45,7 @@ Found by running the extension on 11 real sites (`docs/REAL_SITES.md`, `npm run 
 | F8 | Secret-field names match word parts, not substrings: `topping`, `shipping` and `pincode` are no longer secret. | §5.1 |
 | F9 | Values already tokenized on an origin are found again before NER and reuse their token. | §7.6 |
 | F10 | The settings page offers the §9.4 model override for every capability (face, OCR, QR, NER), not only face. | §9.4 |
+| F11 | OpenRouter is a second LLM vendor (`llm:openrouter`), added exactly as §12.5 prescribes: one client file and one registry entry. It asks OpenRouter to route only to providers that don't store data. | §12.5, §12.6 |
 
 ---
 
@@ -659,6 +660,14 @@ Never requires changes to: `AgentBackend`, `SanitizedObservation`, `AgentRespons
 - Timeout (e.g. 30 s) via `AbortSignal`; one retry with backoff on 429/5xx (`backend_rate_limited`, `backend_error`).
 - If Groq's limits become a problem, switch provider in settings (§12.5).
 - Build `AgentBackend` and the `ModelClient` shapes first, then `GroqClient` — so the interfaces aren't shaped around Groq's quirks.
+- *As built (M12, F11):* **OpenRouter** (`src/backend/llm/clients/openrouter.ts`, backend id `llm:openrouter`), a second vendor on the same `openaiCompatible.ts` helper. Checked against OpenRouter's docs and live model list on 2026-09-27:
+  - Endpoint `https://openrouter.ai/api/v1/chat/completions`. Default model `qwen/qwen3.8-27b`, the same as Groq's, listed with image input and `response_format`. The model is overridable in settings.
+  - Every request carries `provider: { data_collection: 'deny', require_parameters: true }`. OpenRouter's default (`allow`) may route to upstream providers that store or train on prompts. With these constraints, a request that no provider can serve fails (`backend_error`) instead of routing somewhere looser (fail-closed). Zero-data-retention (`zdr`) is not required, because it may leave no provider for the model.
+  - The optional attribution headers (`HTTP-Referer`, `X-Title`) are not sent.
+  - Capabilities match Groq's for the same model: 3 images, 3 MB per image, 131K context. OpenRouter publishes no global image cap and the upstream provider varies.
+  - `https://openrouter.ai/*` joins `host_permissions` (§12.4: known vendor hosts are static).
+  - The only change outside the new file: `openaiCompatible.ts` gained a vendor-neutral `extraBody` option, spread before `model`/`messages`/`response_format` so it can never replace them.
+  - 402 (no credits) maps to `backend_error` like any other non-OK status, so no new reason code.
 
 ### 12.7 Credentials
 

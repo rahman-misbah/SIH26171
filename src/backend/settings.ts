@@ -5,12 +5,12 @@
 
 import type { KeyValueStore } from '@/platform/types';
 
-export type LlmProvider = 'groq' | 'openai-compatible';
+export type LlmProvider = 'groq' | 'openrouter' | 'openai-compatible';
 
 export interface LlmProviderSettings {
   apiKey: string;
   model?: string;
-  baseUrl?: string; // required for 'openai-compatible'; groq's endpoint is fixed
+  baseUrl?: string; // required for 'openai-compatible'; groq's and openrouter's endpoints are fixed
 }
 
 export interface HttpBackendSettings {
@@ -19,7 +19,7 @@ export interface HttpBackendSettings {
 }
 
 export interface BackendSettings {
-  // 'mock' | 'llm:groq' | 'llm:openai-compatible' | 'http:custom' -- matches backends.config.ts's keys.
+  // 'mock' | 'llm:groq' | 'llm:openrouter' | 'llm:openai-compatible' | 'http:custom' -- matches backends.config.ts's keys.
   selectedBackendId: string;
   llm: Partial<Record<LlmProvider, LlmProviderSettings>>;
   http?: HttpBackendSettings; // M11, §12.3

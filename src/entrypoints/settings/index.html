@@ -45,6 +45,7 @@
       <select id="backend">
         <option value="mock">Mock (no network, records observations)</option>
         <option value="llm:groq">Groq</option>
+        <option value="llm:openrouter">OpenRouter</option>
         <option value="llm:openai-compatible">Self-hosted / OpenAI-compatible</option>
         <option value="http:custom">Custom agent server (Edward wire protocol)</option>
       </select>
@@ -55,6 +56,14 @@
         <input id="groq-key" type="password" autocomplete="off" />
         <label for="groq-model">Model (optional override)</label>
         <input id="groq-model" type="text" placeholder="qwen/qwen3.8-27b" />
+      </fieldset>
+
+      <fieldset id="openrouter-fields">
+        <legend>OpenRouter</legend>
+        <label for="openrouter-key">API key</label>
+        <input id="openrouter-key" type="password" autocomplete="off" />
+        <label for="openrouter-model">Model (optional override)</label>
+        <input id="openrouter-model" type="text" placeholder="qwen/qwen3.8-27b" />
       </fieldset>
 
       <fieldset id="oac-fields">

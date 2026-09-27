@@ -24,3 +24,21 @@ test('settings page lists every capability and saves model overrides', async ({ 
   await expect(page.locator('#model-ner')).toHaveValue('ner/gravitee-bert-small-pii');
   await expect(page.locator('#model-ocr')).toHaveValue('');
 });
+
+// M12 F11 (§12.4): OpenRouter is a selectable backend with its own key and
+// model fields. Its host is a static host_permission, so saving needs no prompt.
+test('settings page saves and reloads the OpenRouter backend', async ({ context, extensionId }) => {
+  const page = await context.newPage();
+  await page.goto(`chrome-extension://${extensionId}/settings.html`);
+
+  await page.selectOption('#backend', 'llm:openrouter');
+  await page.fill('#openrouter-key', 'sk-or-test-not-a-real-key');
+  await page.fill('#openrouter-model', 'google/gemini-3.8-flash');
+  await page.click('#save');
+  await expect(page.locator('#status')).toHaveText('Saved.');
+
+  await page.reload();
+  await expect(page.locator('#backend')).toHaveValue('llm:openrouter');
+  await expect(page.locator('#openrouter-key')).toHaveValue('sk-or-test-not-a-real-key');
+  await expect(page.locator('#openrouter-model')).toHaveValue('google/gemini-3.8-flash');
+});

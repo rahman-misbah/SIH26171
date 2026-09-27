@@ -3,13 +3,15 @@
 // two real `llm:*` entries -- no rework of getBackend()/registry.ts itself.
 // Adding a new LLM vendor (§12.5) needs only a new src/backend/llm/clients/
 // file plus one more entry here; nothing here ever branches on a backend
-// *kind* beyond 'llm'/'http'/'mock'. M11 adds 'http:custom' (§12.3).
+// *kind* beyond 'llm'/'http'/'mock'. M11 adds 'http:custom' (§12.3); M12
+// adds 'llm:openrouter' (SPEC §0.1 F11) exactly that way.
 
 import { getBackendDeps, tryGetBackendDeps } from './deps';
 import { HttpAgentBackend } from './http/backend';
 import { LlmAgentBackend } from './llm/backend';
 import { createGroqClient, GROQ_CAPABILITIES } from './llm/clients/groq';
 import { createOpenAiCompatibleClient } from './llm/clients/openaiCompatible';
+import { createOpenRouterClient, OPENROUTER_CAPABILITIES } from './llm/clients/openrouter';
 import type { ClientCapabilities } from './llm/types';
 import { MockAgentBackend } from './mock';
 import { getBackendSettings } from './settings';
@@ -55,6 +57,20 @@ export const backendFactories: Record<string, () => AgentBackend> = {
         const provider = settings.llm.groq;
         if (!provider?.apiKey) throw new ReasonCodeError('backend_error', 'groq api key not configured');
         return createGroqClient({ apiKey: provider.apiKey, model: provider.model });
+      },
+    }),
+
+  'llm:openrouter': () =>
+    new LlmAgentBackend({
+      id: 'llm:openrouter',
+      capabilities: OPENROUTER_CAPABILITIES,
+      logger: getBackendDeps().logger,
+      loadSystemPrompt: () => loadSystemPromptOnce(getBackendDeps().assetUrl),
+      loadClient: async () => {
+        const settings = await getBackendSettings(getBackendDeps().settings);
+        const provider = settings.llm.openrouter;
+        if (!provider?.apiKey) throw new ReasonCodeError('backend_error', 'openrouter api key not configured');
+        return createOpenRouterClient({ apiKey: provider.apiKey, model: provider.model });
       },
     }),
 
