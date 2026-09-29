@@ -18,11 +18,16 @@ const OPENROUTER_BASE_URL = 'https://openrouter.ai/api/v1';
 const OPENROUTER_DEFAULT_MODEL = 'qwen/qwen3.8-27b';
 
 // OpenRouter forwards each request to one of several upstream providers and
-// publishes no global per-request image cap, so these are conservative and
-// match Groq's limits for the same model: 3 images, SPEC's 3 MB per-image
-// budget, 131K context (OpenRouter lists 1M, but not every upstream serves it).
+// publishes no per-request image cap. M12 (user decision, 2026-09-30): 8
+// images, enough for every image fixture page in one step (images.html has
+// 7). Groq, whose documented cap is 3, isn't among this model's OpenRouter
+// upstreams (16 providers listed on 2026-09-30, none publishing a cap);
+// revert to 3 if a provider rejects the request. Sent images are downscaled
+// JPEGs (<= 1024 px), so 8 stays far below usual request-size limits.
+// SPEC's 3 MB per-image budget and 131K context (OpenRouter lists 1M, but
+// not every upstream serves it) are unchanged.
 export const OPENROUTER_CAPABILITIES: ClientCapabilities = {
-  maxImagesPerRequest: 3,
+  maxImagesPerRequest: 8,
   maxImageBytes: 3 * 1024 * 1024,
   maxContextTokens: 131_072,
   supportsJsonMode: true,

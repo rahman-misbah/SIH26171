@@ -60,12 +60,12 @@ describe('createOpenRouterClient', () => {
     expect(headers.Authorization).toBe('Bearer k');
   });
 
-  it('exposes the conservative capabilities', () => {
+  it('exposes its capabilities (8 images: every image fixture page fits one step)', () => {
     const client = createOpenRouterClient({ apiKey: 'k' });
     expect(client.id).toBe('openrouter');
     expect(client.capabilities).toEqual(OPENROUTER_CAPABILITIES);
     expect(OPENROUTER_CAPABILITIES).toEqual({
-      maxImagesPerRequest: 3,
+      maxImagesPerRequest: 8,
       maxImageBytes: 3 * 1024 * 1024,
       maxContextTokens: 131_072,
       supportsJsonMode: true,

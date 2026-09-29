@@ -1,0 +1,53 @@
+<!doctype html>
+<!-- M12 demo page (docs/VIDEO_SCRIPT.md, scene 4): one image of each kind
+     Edward redacts -- a face, an image whose text mixes PII with ordinary
+     words, and a QR code -- so a single step shows every kind of image
+     redaction. Exactly 3 images: within every backend's send budget
+     (Groq's cap is 3), so none is left out as request_limit. All three are
+     laid out to fit one 1080p screen at 125% zoom, since images in the
+     viewport are sent first (§14.3). Synthetic assets only, as in
+     images.html. -->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Order details — demo fixture</title>
+    <style>
+      body {
+        font: 16px/1.5 system-ui, sans-serif;
+        margin: 24px;
+        color: #1b1f24;
+      }
+      .row {
+        display: flex;
+        gap: 24px;
+        align-items: flex-start;
+        flex-wrap: wrap;
+      }
+      figure {
+        margin: 0;
+      }
+      figcaption {
+        font-size: 14px;
+        color: #5b6470;
+        margin-top: 4px;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Order details</h1>
+    <div class="row">
+      <figure>
+        <img src="../assets/face-3.png" alt="Account holder photo" data-canary="face-3" width="220" height="220" />
+        <figcaption>Account holder</figcaption>
+      </figure>
+      <figure>
+        <img src="../assets/ocr-mixed.png" alt="Order summary" data-canary="ocr-mixed" width="416" height="160" />
+        <figcaption>Order summary</figcaption>
+      </figure>
+      <figure>
+        <img src="../assets/qr-1.png" alt="Payment QR code" data-canary="qr-1" width="200" height="200" />
+        <figcaption>Scan to pay</figcaption>
+      </figure>
+    </div>
+  </body>
+</html>
