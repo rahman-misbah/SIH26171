@@ -73,6 +73,9 @@ function loadClassifier(init: InitMessage): Promise<TokenClassificationPipeline>
     // `Partial<onnxruntime-common Env>` -- onnxruntime-web always populates
     // it before user code runs, but the guard keeps this correct either way.
     if (env.backends.onnx.wasm) env.backends.onnx.wasm.wasmPaths = init.ortWasmBaseUrl;
+    // §10: ORT requests its own adapter; ask for the dedicated GPU the
+    // hardware detection chose, not the browser's default (often integrated).
+    if (env.backends.onnx.webgpu) env.backends.onnx.webgpu.powerPreference = 'high-performance';
     return pipeline('token-classification', 'ner', {
       dtype: 'q8',
       device: init.compute === 'webgpu' ? 'webgpu' : 'wasm',

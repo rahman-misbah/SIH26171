@@ -10,18 +10,42 @@ afterEach(() => {
 });
 
 describe('detectDevice', () => {
-  it('picks webgpu when an adapter is available, and records its info', async () => {
-    stubNavigator({
-      gpu: {
-        requestAdapter: () =>
-          Promise.resolve({ info: { vendor: 'test-vendor', architecture: 'test-arch' } }),
-      },
-    });
+  it('picks webgpu for a dedicated GPU, asking for the high-performance adapter', async () => {
+    const requestAdapter = vi.fn(() => Promise.resolve({ info: { vendor: 'nvidia', architecture: 'ampere' } }));
+    stubNavigator({ gpu: { requestAdapter } });
 
     const profile = await detectDevice('chromium');
 
+    expect(requestAdapter).toHaveBeenCalledWith({ powerPreference: 'high-performance' });
     expect(profile.compute).toBe('webgpu');
-    expect(profile.gpu).toEqual({ available: true, vendor: 'test-vendor', architecture: 'test-arch' });
+    expect(profile.gpu).toEqual({ available: true, vendor: 'nvidia', architecture: 'ampere', kind: 'discrete', usable: true });
+  });
+
+  it('uses wasm on an integrated GPU, but records it', async () => {
+    stubNavigator({ gpu: { requestAdapter: () => Promise.resolve({ info: { vendor: 'intel', architecture: 'gen-9' } }) } });
+
+    const profile = await detectDevice('chromium');
+
+    expect(profile.compute).toBe('wasm');
+    expect(profile.gpu).toEqual({ available: true, vendor: 'intel', architecture: 'gen-9', kind: 'integrated', usable: false });
+  });
+
+  it('uses wasm when it cannot tell (AMD APU vs Radeon card)', async () => {
+    stubNavigator({ gpu: { requestAdapter: () => Promise.resolve({ info: { vendor: 'amd', architecture: 'gcn-5' } }) } });
+
+    expect((await detectDevice('chromium')).compute).toBe('wasm');
+  });
+
+  it('uses webgpu on Apple Silicon', async () => {
+    stubNavigator({ gpu: { requestAdapter: () => Promise.resolve({ info: { vendor: 'apple', architecture: 'metal-3' } }) } });
+
+    expect((await detectDevice('chromium')).compute).toBe('webgpu');
+  });
+
+  it('uses wasm on a fallback (software) adapter', async () => {
+    stubNavigator({ gpu: { requestAdapter: () => Promise.resolve({ isFallbackAdapter: true, info: { vendor: 'nvidia' } }) } });
+
+    expect((await detectDevice('chromium')).compute).toBe('wasm');
   });
 
   it('falls back to wasm when navigator.gpu is absent', async () => {
@@ -78,7 +102,7 @@ describe('detectDevice', () => {
   // M10: benchmark builds force one compute path so a single machine can
   // produce both columns of the WebGPU-vs-WASM table (docs/BENCHMARKS.md).
   describe('forced compute (benchmark builds only)', () => {
-    const adapter = { requestAdapter: () => Promise.resolve({}) };
+    const adapter = { requestAdapter: () => Promise.resolve({ info: { vendor: 'nvidia' } }) };
 
     it('forces wasm even when an adapter is available, and flags the profile', async () => {
       stubNavigator({ gpu: adapter });
@@ -88,7 +112,7 @@ describe('detectDevice', () => {
       expect(profile.compute_forced).toBe(true);
     });
 
-    it('forces webgpu only when a real adapter exists', async () => {
+    it('forces webgpu only when a dedicated GPU exists', async () => {
       stubNavigator({ gpu: adapter });
       const profile = await detectDevice('chromium', 'webgpu');
       expect(profile.compute).toBe('webgpu');
@@ -97,6 +121,13 @@ describe('detectDevice', () => {
 
     it('fails closed to wasm when webgpu is forced without an adapter', async () => {
       stubNavigator({});
+      const profile = await detectDevice('chromium', 'webgpu');
+      expect(profile.compute).toBe('wasm');
+      expect(profile.compute_forced).toBeUndefined();
+    });
+
+    it('fails closed to wasm when webgpu is forced on an integrated GPU', async () => {
+      stubNavigator({ gpu: { requestAdapter: () => Promise.resolve({ info: { vendor: 'intel', architecture: 'gen-9' } }) } });
       const profile = await detectDevice('chromium', 'webgpu');
       expect(profile.compute).toBe('wasm');
       expect(profile.compute_forced).toBeUndefined();

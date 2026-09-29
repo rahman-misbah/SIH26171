@@ -46,6 +46,9 @@ let sessionPromise: Promise<ort.InferenceSession> | undefined;
 function loadSession(init: InitMessage): Promise<ort.InferenceSession> {
   sessionPromise ??= (async () => {
     ort.env.wasm.wasmPaths = init.ortWasmBaseUrl;
+    // §10: ORT requests its own adapter; ask for the same dedicated GPU the
+    // hardware detection chose, not the browser's default (often integrated).
+    ort.env.webgpu.powerPreference = 'high-performance';
     // §9.3: one execution provider, the one the compute decision names. No
     // silent wasm fallback on a WebGPU device: if WebGPU fails, the load
     // fails, and the registry drops to BlazeFace and logs it (§9.4), so the

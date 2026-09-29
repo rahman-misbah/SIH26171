@@ -47,12 +47,22 @@ function post(msg: OutMessage): void {
   (self as unknown as Worker).postMessage(msg);
 }
 
+// §10: MediaPipe's GPU delegate is WebGL. getContext() returns the context a
+// canvas already has, so creating it here first with 'high-performance' makes
+// MediaPipe render on the dedicated GPU instead of the default (integrated) one.
+function highPerformanceCanvas(): OffscreenCanvas {
+  const canvas = new OffscreenCanvas(1, 1);
+  canvas.getContext('webgl2', { powerPreference: 'high-performance' });
+  return canvas;
+}
+
 let detectorPromise: Promise<FaceDetector> | undefined;
 
 function loadDetector(init: InitMessage): Promise<FaceDetector> {
   detectorPromise ??= (async () => {
     const fileset = await FilesetResolver.forVisionTasks(init.wasmBaseUrl, true);
     return FaceDetector.createFromOptions(fileset, {
+      ...(init.compute === 'webgpu' ? { canvas: highPerformanceCanvas() } : {}),
       baseOptions: {
         modelAssetPath: init.modelUrl,
         // §9.3: map the global compute decision (§10) onto MediaPipe's

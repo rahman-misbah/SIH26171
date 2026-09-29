@@ -66,7 +66,7 @@ function describeDevice(device: DeviceProfile): string {
 
 function describeAdapter(run: BenchRun | undefined, requested: BenchRun | undefined): string {
   if (!requested) return 'WebGPU: not run';
-  if (!run) return 'WebGPU: unavailable (no adapter; that run fell back to wasm and is not shown)';
+  if (!run) return 'WebGPU: unavailable (no dedicated GPU; that run fell back to wasm and is not shown)';
   const { vendor, architecture } = run.device.gpu;
   return `WebGPU adapter: ${vendor ?? 'n/a'} / ${architecture ?? 'n/a'}`;
 }

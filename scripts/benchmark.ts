@@ -25,9 +25,9 @@ once with compute forced to WASM and once to WebGPU, and the logger's per-op p50
 reported side by side. All times are milliseconds.
 
 Reading the tables:
-- A WebGPU column only exists when Chrome exposed a real adapter (Linux needs
-  \`--enable-unsafe-webgpu --enable-features=Vulkan\`, which the benchmark passes). Without one the
-  run falls back to WASM and the column reads "unavailable".
+- A WebGPU column only exists when Chrome exposed a dedicated GPU (or Apple Silicon; SPEC §10). Linux needs
+  \`--enable-unsafe-webgpu --enable-features=Vulkan\`, which the benchmark passes, and on a laptop with two GPUs Chrome
+  must run on the dedicated one (e.g. \`prime-run\`). Without one the run falls back to WASM and the column reads "unavailable".
 - Tesseract (OCR) and zxing (QR) are WASM-only, so they run on WASM in both columns; only NER
   (ONNX Runtime) and face detection change path. MediaPipe's GPU delegate is **WebGL**, so the
   face row's WebGPU column means "the GPU path", not WebGPU itself.
