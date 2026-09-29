@@ -26,8 +26,12 @@ export function launchExtensionContext(userDataDir = ''): Promise<BrowserContext
       // M10 benchmark (scripts/benchmark.ts): WebGPU is off by default in
       // Chrome on Linux. With both flags Chrome exposes the real (Vulkan)
       // adapter; --enable-unsafe-webgpu alone gives SwiftShader, a CPU
-      // emulator that would pass for a GPU.
-      ...(process.env.EDWARD_FORCE_COMPUTE === 'webgpu' ? ['--enable-unsafe-webgpu', '--enable-features=Vulkan'] : []),
+      // emulator that would pass for a GPU. --disable-accelerated-2d-canvas:
+      // under PRIME offload (dGPU laptop) Vulkan canvas readback returns all
+      // zeros, so every image reaches the models blank; a CPU canvas doesn't.
+      ...(process.env.EDWARD_FORCE_COMPUTE === 'webgpu'
+        ? ['--enable-unsafe-webgpu', '--enable-features=Vulkan', '--disable-accelerated-2d-canvas']
+        : []),
     ],
   });
 }

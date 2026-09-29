@@ -78,36 +78,36 @@ detections that matched no face. Detect ms is the median of 3 warm calls. The mo
 ## Ryzen 7 4800H + RTX 3050 Mobile, Ubuntu 24.04 — 2026-09-29
 
 chromium · Linux · 16 logical cores · ≥16 GB RAM  
-WebGPU adapter: amd / gcn-5
+WebGPU adapter: nvidia / ampere
 
 | op (ms) | WASM p50 | WASM p95 | n | WebGPU p50 | WebGPU p95 | n |
 |---|---:|---:|---:|---:|---:|---:|
-| `dom.phase_a` | 1 | 22 | 13 | 1 | 23 | 13 |
-| `dom.phase_b` | 0 | 0 | 13 | 0 | 1 | 13 |
-| `sanitize.regex` | 131 | 191 | 13 | 290 | 615 | 13 |
-| `sanitize.ner` | 68 | 143 | 28 | 178 | 362 | 26 |
-| `image.acquire` | 9 | 23 | 7 | 13 | 18 | 7 |
-| `image.face` | 15 | 20 | 7 | 215 | 231 | 7 |
+| `dom.phase_a` | 1 | 23 | 13 | 1 | 24 | 13 |
+| `dom.phase_b` | 0 | 1 | 13 | 0 | 1 | 13 |
+| `sanitize.regex` | 130 | 190 | 13 | 577 | 852 | 13 |
+| `sanitize.ner` | 48 | 144 | 29 | 308 | 391 | 26 |
+| `image.acquire` | 10 | 23 | 7 | 10 | 16 | 7 |
+| `image.face` | 15 | 26 | 7 | 163 | 402 | 7 |
 | ↳ `image.face` queue wait | 0 | 0 |  | 0 | 0 |  |
-| `image.ocr` | 153 | 197 | 7 | 207 | 227 | 7 |
+| `image.ocr` | 140 | 205 | 7 | 158 | 221 | 7 |
 | ↳ `image.ocr` queue wait | 0 | 1 |  | 1 | 1 |  |
-| `image.qr` | 25 | 36 | 7 | 110 | 155 | 7 |
-| ↳ `image.qr` queue wait | 4 | 8 |  | 8 | 78 |  |
-| `image.redact` | 6 | 15 | 7 | 17 | 21 | 7 |
+| `image.qr` | 28 | 37 | 7 | 26 | 51 | 7 |
+| ↳ `image.qr` queue wait | 5 | 12 |  | 4 | 7 |  |
+| `image.redact` | 6 | 16 | 7 | 8 | 13 | 7 |
 | `image.cache_hit` | 0 | 0 | 21 | 0 | 0 | 21 |
 | `image.cache_miss` | 0 | 0 | 7 | 0 | 0 | 7 |
 | `context.assemble` | 0 | 2 | 13 | 1 | 3 | 13 |
-| `model.load` | 779 | 1035 | 4 | 1091 | 1212 | 4 |
-| `model.warmup` | 824 | 1114 | 4 | 1396 | 1559 | 4 |
-| `image.cache_prune` | 7 | 7 | 1 | 7 | 7 | 1 |
+| `model.load` | 756 | 1067 | 4 | 1255 | 1316 | 4 |
+| `model.warmup` | 799 | 1147 | 4 | 1565 | 1601 | 4 |
+| `image.cache_prune` | 6 | 6 | 1 | 8 | 8 | 1 |
 
 | model | load ms, WASM run (ran on) | load ms, WebGPU run (ran on) |
 |---|---:|---:|
-| `face/blazeface-mediapipe` | 425 (wasm) | – |
-| `face/scrfd-2.5g` | – | 681 (webgpu) |
-| `ner/gravitee-bert-small-pii` | 1035 (wasm) | 1212 (webgpu) |
-| `ocr/tesseract-eng-lstm` | 779 (wasm) | 1091 (wasm) |
-| `qr/zxing-wasm` | 61 (wasm) | 50 (wasm) |
+| `face/blazeface-mediapipe` | 387 (wasm) | – |
+| `face/scrfd-2.5g` | – | 1255 (webgpu) |
+| `ner/gravitee-bert-small-pii` | 1067 (wasm) | 1316 (webgpu) |
+| `ocr/tesseract-eng-lstm` | 756 (wasm) | 930 (wasm) |
+| `qr/zxing-wasm` | 57 (wasm) | 66 (wasm) |
 
 ## Face recall, Ryzen 7 4800H + RTX 3050 Mobile, Ubuntu 24.04 (webgpu) — 2026-09-29
 
@@ -117,6 +117,5 @@ detections that matched no face. Detect ms is the median of 3 warm calls. The mo
 
 | Provider | Loaded | Compute | Recall | 160 px | 128 px | 96 px | 72 px | 56 px | 40 px | 32 px | 24 px | 20 px | False positives | Detect ms |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| face/blazeface-mediapipe | face/blazeface-mediapipe | webgpu | 4/18 (22%) | 2/2 | 2/2 | 0/2 | 0/2 | 0/2 | 0/2 | 0/2 | 0/2 | 0/2 | 1 | 15 |
-| face/scrfd-2.5g | face/scrfd-2.5g | webgpu | 18/18 (100%) | 2/2 | 2/2 | 2/2 | 2/2 | 2/2 | 2/2 | 2/2 | 2/2 | 2/2 | 0 | 98 |
-
+| face/blazeface-mediapipe | face/blazeface-mediapipe | webgpu | 4/18 (22%) | 2/2 | 2/2 | 0/2 | 0/2 | 0/2 | 0/2 | 0/2 | 0/2 | 0/2 | 1 | 13 |
+| face/scrfd-2.5g | face/scrfd-2.5g | webgpu | 18/18 (100%) | 2/2 | 2/2 | 2/2 | 2/2 | 2/2 | 2/2 | 2/2 | 2/2 | 2/2 | 0 | 123 |
