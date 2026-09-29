@@ -24,7 +24,7 @@ describe('exported logs never contain canary values (§18.1)', () => {
 
     await logger.timed('dom.phase_a', { session_id: 'canary-session', ref: 'n0' }, () => Promise.resolve('ok'));
     await logger
-      .timed('sanitize.regex', { session_id: 'canary-session' }, () => {
+      .timed('sanitize.chunk', { session_id: 'canary-session' }, () => {
         throw new ReasonCodeError('unknown', canaries[0]?.value ?? 'boom');
       })
       .catch(() => {});

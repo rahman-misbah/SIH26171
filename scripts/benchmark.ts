@@ -28,9 +28,13 @@ Reading the tables:
 - A WebGPU column only exists when Chrome exposed a dedicated GPU (or Apple Silicon; SPEC §10). Linux needs
   \`--enable-unsafe-webgpu --enable-features=Vulkan\`, which the benchmark passes, and on a laptop with two GPUs Chrome
   must run on the dedicated one (e.g. \`prime-run\`). Without one the run falls back to WASM and the column reads "unavailable".
-- Tesseract (OCR) and zxing (QR) are WASM-only, so they run on WASM in both columns; only NER
-  (ONNX Runtime) and face detection change path. MediaPipe's GPU delegate is **WebGL**, so the
-  face row's WebGPU column means "the GPU path", not WebGPU itself.
+- Tesseract (OCR) and zxing (QR) are WASM-only, so they run on WASM in both columns. Since M12
+  NER is too (it was slower on WebGPU, SPEC §10), so only face detection changes path. MediaPipe's
+  GPU delegate is **WebGL**, so the face row's WebGPU column means "the GPU path", not WebGPU itself.
+- Since M12 the face row is SCRFD + BlazeFace together on both paths (SPEC §9.5). Older sections
+  ran BlazeFace on WASM and SCRFD on WebGPU, so their face rows compare different models.
+- \`sanitize.chunk\` is one whole sanitization message: regex plus the awaited NER. Sections from
+  before M12 call it \`sanitize.regex\`; it's the same measurement.
 - \`queue wait\` rows are time spent waiting for a free pool worker (§9.6), already included in
   the op's own time.
 - \`model.load\`/\`model.warmup\` are one-off startup costs (§15 warm start), paid before the first

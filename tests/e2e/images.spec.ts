@@ -9,18 +9,20 @@
 // shares the extension origin with the offscreen document.
 
 import { createHash } from 'node:crypto';
+import { mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
 import path from 'node:path';
 import type { BrowserContext, Page } from '@playwright/test';
 import type { AssembleResult } from '../../src/agent/assemble';
 import { computeImgId } from '../../src/image/imgId';
 import type { LogRecord } from '../../src/logging/schema';
-import { E2E_PUBLIC_HOST, expect, test } from './fixtures';
+import { E2E_PUBLIC_HOST, expect, launchWithFaceProvider, test } from './fixtures';
 import { imageBytes, type ObservedImage } from './imageForensics';
 import { startStaticServer } from './staticServer';
 
 const FIXTURES_ROOT = path.resolve(import.meta.dirname, '../fixtures');
 // Longer than canary.spec.ts's default: the first observation also cold-loads
-// the MediaPipe wasm + BlazeFace into every vision worker.
+// the face models (SCRFD + BlazeFace since M12) into every vision worker.
 const OBSERVE_TIMEOUT_MS = 30_000;
 // The logger flushes its ring buffer to IndexedDB every 5s (§11.2).
 const LOG_FLUSH_WAIT_MS = 5_500;
@@ -145,7 +147,9 @@ test('face fixtures are redacted, sent and cached; a second observation hits the
 
     // Each outgoing image carries a painted box: clearly more solid black
     // than its original. (The originals contain almost none; a face box
-    // covers a large share of these close-up portraits.)
+    // covers a large share of these close-up portraits.) M12: SCRFD alone
+    // missed a close-up here, which is why the automatic face model is
+    // SCRFD + BlazeFace (providers/face/union.ts).
     const FACES: [string, number][] = [
       ['face-1.png', 200],
       ['face-2.png', 200],
@@ -361,8 +365,13 @@ test('unreadable and too-small images are withheld with a marker; tainted images
 // to odml.pa.googleapis.com every 60s. The model-worker egress guard
 // (src/models/providers/egressGuard.ts) must refuse that request and log it.
 // Waits out MediaPipe's 60s flush interval, so this is the slowest e2e test.
-test('model workers cannot phone home: MediaPipe’s metrics upload is refused and logged', async ({ context, extensionId }) => {
-  test.setTimeout(150_000);
+// M12: SCRFD is now the automatic face model everywhere, so BlazeFace (the
+// only MediaPipe task) is pinned with the model override on its own profile.
+test('model workers cannot phone home: MediaPipe’s metrics upload is refused and logged', async () => {
+  test.setTimeout(180_000);
+  const userDataDir = await mkdtemp(path.join(tmpdir(), 'edward-egress-'));
+  const context = await launchWithFaceProvider(userDataDir, 'face/blazeface-mediapipe');
+  const extensionId = (context.serviceWorkers()[0] ?? (await context.waitForEvent('serviceworker'))).url().split('/')[2] ?? '';
   // Backstop only, so this test can never leak even if the guard regressed.
   // Counted, and expected to stay at zero: the guard refuses the request
   // inside the worker before it reaches the network stack.
@@ -395,5 +404,7 @@ test('model workers cannot phone home: MediaPipe’s metrics upload is refused a
     expect(reachedNetwork).toBe(0);
   } finally {
     await server.close();
+    await context.close();
+    await rm(userDataDir, { recursive: true, force: true });
   }
 });

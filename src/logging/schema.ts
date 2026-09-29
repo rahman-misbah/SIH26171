@@ -7,7 +7,7 @@ import type { DeviceProfile } from '@/hw/types';
 export type OpName =
   | 'dom.phase_a'
   | 'dom.phase_b'
-  | 'sanitize.regex'
+  | 'sanitize.chunk' // M12: one sanitizeChunk message end to end (regex + awaited NER + tokens); was 'sanitize.regex'
   | 'sanitize.ner'
   | 'sanitize.memo_hit'
   | 'image.acquire'
@@ -19,6 +19,7 @@ export type OpName =
   | 'image.cache_miss'
   | 'image.revalidate'
   | 'image.cache_prune' // M12: expired/over-cap cache records deleted at host start (counts.images)
+  | 'image.readback_check' // M12: once per host, can a 2D canvas be read back correctly? (§6.4)
   | 'model.load'
   | 'model.warmup' // M10: §15 warm-start inference(s) for one capability
   | 'model.downgrade'
@@ -57,6 +58,7 @@ export type ReasonCode =
   | 'model_override_unknown' // M11: the model settings name a provider id that doesn't exist (ignored)
   | 'backend_version_unsupported' // M11: an http backend answered 426 to schema_version (§12.3)
   | 'cache_prune_failed' // M12: the image-cache prune at host start failed (cache left as it was)
+  | 'canvas_readback_failed' // M12: canvas readback returned wrong pixels (e.g. all zeros under PRIME offload + Vulkan); every image is withheld
   | 'unknown';
 
 export interface LogRecord {

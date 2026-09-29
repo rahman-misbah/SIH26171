@@ -10,6 +10,8 @@ Reading the tables:
   observation within 120 s); `error`; `nav_failed` (the page didn't load).
 - **observe ms**: wall time of the whole observation in the content script (Phase A, Phase B,
   images the assembler waits for, assembly).
+- **`sanitize.chunk`**: one whole sanitization message (regex plus the awaited NER). Sections from
+  before M12 call it `sanitize.regex`; it's the same measurement.
 - **tokens**: distinct `[PII_<TYPE>_n]` tokens in the outgoing observation.
 - **leak candidates**: regex-tier hits left in the outgoing text (`src/sanitize/residualScan.ts`).
   The pipeline tokenizes every regex hit except emails the §7.5 heuristic keeps public, so any

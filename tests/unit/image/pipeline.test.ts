@@ -81,6 +81,7 @@ function setup(
     now: () => now,
     faceDetector: async () => face,
     detectorSetVersion: async () => VERSION,
+    pixelReadbackOk: async () => true,
     fetchImage: vi.fn(async () => ({ notModified: false as const, blob: new Blob([new Uint8Array([9])]), etag: '"e1"' })),
     decode: vi.fn(async () => bitmap as unknown as ImageBitmap),
     hashPixels: vi.fn(async (img: ImageBitmap) => (img as unknown as FakeBitmap).hash),
@@ -379,5 +380,53 @@ describe('image pipeline: lookup + cache (§6.6)', () => {
     version = 'face=face/stronger;ocr=ocr/test;qr=qr/test';
     const [result] = await pipeline.lookup(CTX, [REF]);
     expect(result?.status).toBe('need_pixels');
+  });
+});
+
+describe('image pipeline: pixel readback check (§6.4, fail closed)', () => {
+  it('withholds every image as unreadable when canvas readback is broken, without running detectors or caching', async () => {
+    const { pipeline, cache, sendable, records, face, bitmap } = setup({ pixelReadbackOk: async () => false });
+    const result = await pipeline.process(CTX, REF, new ArrayBuffer(4));
+
+    expect(result.outcome).toBe('unreadable');
+    expect(face.detect).not.toHaveBeenCalled();
+    expect(cache.records.size).toBe(0);
+    expect(sendable.forSession(CTX.session_id).size).toBe(0);
+    expect(records.some((r) => r.reason === 'canvas_readback_failed' && r.outcome === 'fail_closed')).toBe(true);
+    // Nothing was decoded, so there are no raw pixels to close.
+    expect(bitmap.closed).toBe(false);
+  });
+
+  it('serves no cache hit while readback is broken', async () => {
+    const { pipeline, cache } = setup({ pixelReadbackOk: async () => false });
+    const img_id = await computeImgId(SRC, 200, 100);
+    await cache.put({
+      key: cacheKey(img_id, VERSION),
+      img_id,
+      detector_set_version: VERSION,
+      acquired_via: 'canvas',
+      raw_sha256: 'h'.repeat(64),
+      redacted_image: new Blob([new Uint8Array([1])]),
+      redaction_counts: { faces: 0, text: 0, codes: 0 },
+      created_at: 1_000_000,
+      validated_at: 1_000_000,
+    });
+    const [result] = await pipeline.lookup(CTX, [REF]);
+    expect(result?.status).toBe('need_pixels');
+  });
+
+  it('runs the check once and logs it once, as image.readback_check', async () => {
+    const check = vi.fn(async () => true);
+    const { pipeline, records } = setup({ pixelReadbackOk: check });
+    await pipeline.process(CTX, REF, new ArrayBuffer(4));
+    await pipeline.process(CTX, { ...REF, node_id: 'n2' }, new ArrayBuffer(4));
+
+    expect(check).toHaveBeenCalledTimes(1);
+    expect(records.filter((r) => r.op === 'image.readback_check')).toEqual([expect.objectContaining({ outcome: 'ok' })]);
+  });
+
+  it('treats a check that throws as broken (fail closed)', async () => {
+    const { pipeline } = setup({ pixelReadbackOk: async () => Promise.reject(new Error('no canvas')) });
+    expect((await pipeline.process(CTX, REF, new ArrayBuffer(4))).outcome).toBe('unreadable');
   });
 });

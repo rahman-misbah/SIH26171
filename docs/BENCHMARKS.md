@@ -9,9 +9,13 @@ Reading the tables:
 - A WebGPU column only exists when Chrome exposed a dedicated GPU (or Apple Silicon; SPEC §10). Linux needs
   `--enable-unsafe-webgpu --enable-features=Vulkan`, which the benchmark passes, and on a laptop with two GPUs Chrome
   must run on the dedicated one (e.g. `prime-run`). Without one the run falls back to WASM and the column reads "unavailable".
-- Tesseract (OCR) and zxing (QR) are WASM-only, so they run on WASM in both columns; only NER
-  (ONNX Runtime) and face detection change path. MediaPipe's GPU delegate is **WebGL**, so the
-  face row's WebGPU column means "the GPU path", not WebGPU itself.
+- Tesseract (OCR) and zxing (QR) are WASM-only, so they run on WASM in both columns. Since M12
+  NER is too (it was slower on WebGPU, SPEC §10), so only face detection changes path. MediaPipe's
+  GPU delegate is **WebGL**, so the face row's WebGPU column means "the GPU path", not WebGPU itself.
+- Since M12 the face row is SCRFD + BlazeFace together on both paths (SPEC §9.5). Older sections
+  ran BlazeFace on WASM and SCRFD on WebGPU, so their face rows compare different models.
+- `sanitize.chunk` is one whole sanitization message: regex plus the awaited NER. Sections from
+  before M12 call it `sanitize.regex`; it's the same measurement.
 - `queue wait` rows are time spent waiting for a free pool worker (§9.6), already included in
   the op's own time.
 - `model.load`/`model.warmup` are one-off startup costs (§15 warm start), paid before the first
@@ -82,32 +86,32 @@ WebGPU adapter: nvidia / ampere
 
 | op (ms) | WASM p50 | WASM p95 | n | WebGPU p50 | WebGPU p95 | n |
 |---|---:|---:|---:|---:|---:|---:|
-| `dom.phase_a` | 1 | 23 | 13 | 1 | 24 | 13 |
+| `dom.phase_a` | 1 | 26 | 13 | 1 | 26 | 13 |
 | `dom.phase_b` | 0 | 1 | 13 | 0 | 1 | 13 |
-| `sanitize.regex` | 130 | 190 | 13 | 577 | 852 | 13 |
-| `sanitize.ner` | 48 | 144 | 29 | 308 | 391 | 26 |
-| `image.acquire` | 10 | 23 | 7 | 10 | 16 | 7 |
-| `image.face` | 15 | 26 | 7 | 163 | 402 | 7 |
-| ↳ `image.face` queue wait | 0 | 0 |  | 0 | 0 |  |
-| `image.ocr` | 140 | 205 | 7 | 158 | 221 | 7 |
-| ↳ `image.ocr` queue wait | 0 | 1 |  | 1 | 1 |  |
-| `image.qr` | 28 | 37 | 7 | 26 | 51 | 7 |
-| ↳ `image.qr` queue wait | 5 | 12 |  | 4 | 7 |  |
-| `image.redact` | 6 | 16 | 7 | 8 | 13 | 7 |
+| `sanitize.chunk` | 142 | 208 | 13 | 137 | 211 | 13 |
+| `sanitize.ner` | 51 | 158 | 29 | 70 | 161 | 28 |
+| `image.acquire` | 13 | 19 | 7 | 7 | 15 | 7 |
+| `image.face` | 339 | 393 | 7 | 122 | 266 | 7 |
+| ↳ `image.face` queue wait | 1 | 1 |  | 1 | 1 |  |
+| `image.ocr` | 194 | 259 | 7 | 182 | 226 | 7 |
+| ↳ `image.ocr` queue wait | 1 | 2 |  | 1 | 3 |  |
+| `image.qr` | 46 | 55 | 7 | 35 | 43 | 7 |
+| ↳ `image.qr` queue wait | 6 | 15 |  | 6 | 10 |  |
+| `image.redact` | 6 | 15 | 7 | 4 | 12 | 7 |
 | `image.cache_hit` | 0 | 0 | 21 | 0 | 0 | 21 |
 | `image.cache_miss` | 0 | 0 | 7 | 0 | 0 | 7 |
-| `context.assemble` | 0 | 2 | 13 | 1 | 3 | 13 |
-| `model.load` | 756 | 1067 | 4 | 1255 | 1316 | 4 |
-| `model.warmup` | 799 | 1147 | 4 | 1565 | 1601 | 4 |
-| `image.cache_prune` | 6 | 6 | 1 | 8 | 8 | 1 |
+| `context.assemble` | 1 | 4 | 13 | 1 | 3 | 13 |
+| `model.load` | 1021 | 1212 | 4 | 1146 | 1550 | 4 |
+| `model.warmup` | 1282 | 1290 | 4 | 1249 | 2243 | 4 |
+| `image.cache_prune` | 8 | 8 | 1 | 6 | 6 | 1 |
+| `image.readback_check` | 8 | 8 | 1 | 2 | 2 | 1 |
 
 | model | load ms, WASM run (ran on) | load ms, WebGPU run (ran on) |
 |---|---:|---:|
-| `face/blazeface-mediapipe` | 387 (wasm) | – |
-| `face/scrfd-2.5g` | – | 1255 (webgpu) |
-| `ner/gravitee-bert-small-pii` | 1067 (wasm) | 1316 (webgpu) |
-| `ocr/tesseract-eng-lstm` | 756 (wasm) | 930 (wasm) |
-| `qr/zxing-wasm` | 57 (wasm) | 66 (wasm) |
+| `face/scrfd+blazeface` | 736 (wasm) | 1550 (webgpu) |
+| `ner/gravitee-bert-small-pii` | 1021 (wasm) | 1057 (wasm) |
+| `ocr/tesseract-eng-lstm` | 1212 (wasm) | 1146 (wasm) |
+| `qr/zxing-wasm` | 92 (wasm) | 80 (wasm) |
 
 ## Face recall, Ryzen 7 4800H + RTX 3050 Mobile, Ubuntu 24.04 (webgpu) — 2026-09-29
 
@@ -118,4 +122,17 @@ detections that matched no face. Detect ms is the median of 3 warm calls. The mo
 | Provider | Loaded | Compute | Recall | 160 px | 128 px | 96 px | 72 px | 56 px | 40 px | 32 px | 24 px | 20 px | False positives | Detect ms |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | face/blazeface-mediapipe | face/blazeface-mediapipe | webgpu | 4/18 (22%) | 2/2 | 2/2 | 0/2 | 0/2 | 0/2 | 0/2 | 0/2 | 0/2 | 0/2 | 1 | 13 |
-| face/scrfd-2.5g | face/scrfd-2.5g | webgpu | 18/18 (100%) | 2/2 | 2/2 | 2/2 | 2/2 | 2/2 | 2/2 | 2/2 | 2/2 | 2/2 | 0 | 123 |
+| face/scrfd-2.5g | face/scrfd-2.5g | webgpu | 18/18 (100%) | 2/2 | 2/2 | 2/2 | 2/2 | 2/2 | 2/2 | 2/2 | 2/2 | 2/2 | 0 | 143 |
+| face/scrfd+blazeface | face/scrfd+blazeface | webgpu | 18/18 (100%) | 2/2 | 2/2 | 2/2 | 2/2 | 2/2 | 2/2 | 2/2 | 2/2 | 2/2 | 5 | 130 |
+
+## Face recall, Ryzen 7 4800H + RTX 3050 Mobile, Ubuntu 24.04 (wasm) — 2026-09-29
+
+tests/fixtures/assets/face-recall.png (1024x576): 18 synthetic faces, two per size. The detector alone is
+measured: a face is found when a detected box is centred inside it with IoU >= 0.2. False positives are
+detections that matched no face. Detect ms is the median of 3 warm calls. The model setting was the only change.
+
+| Provider | Loaded | Compute | Recall | 160 px | 128 px | 96 px | 72 px | 56 px | 40 px | 32 px | 24 px | 20 px | False positives | Detect ms |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| face/blazeface-mediapipe | face/blazeface-mediapipe | wasm | 3/18 (17%) | 2/2 | 1/2 | 0/2 | 0/2 | 0/2 | 0/2 | 0/2 | 0/2 | 0/2 | 1 | 21 |
+| face/scrfd-2.5g | face/scrfd-2.5g | wasm | 18/18 (100%) | 2/2 | 2/2 | 2/2 | 2/2 | 2/2 | 2/2 | 2/2 | 2/2 | 2/2 | 0 | 259 |
+| face/scrfd+blazeface | face/scrfd+blazeface | wasm | 18/18 (100%) | 2/2 | 2/2 | 2/2 | 2/2 | 2/2 | 2/2 | 2/2 | 2/2 | 2/2 | 4 | 261 |

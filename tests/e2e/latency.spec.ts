@@ -1,5 +1,6 @@
 // §15 "measure, then tune": baseline latency for dom.phase_a/dom.phase_b
-// (content script) and sanitize.regex (host-side), recorded as a Playwright
+// (content script) and sanitize.chunk (host-side; sanitize.regex before
+// M12), recorded as a Playwright
 // annotation for the M5 Log entry -- same pattern as M3's ping round-trip
 // measurement. M7 adds sanitize.ner and model.load to the same summary
 // (§9.6's done-when: "p50 sanitize.ner recorded, WebGPU vs WASM if
@@ -14,7 +15,7 @@ import { startStaticServer } from './staticServer';
 const FIXTURES_ROOT = path.resolve(import.meta.dirname, '../fixtures');
 const PAGES = ['profile', 'form', 'comments', 'contact', 'query-links', 'secret-form', 'iframe'] as const;
 
-test('baseline latency for dom.phase_a / dom.phase_b / sanitize.regex', async ({ context }) => {
+test('baseline latency for dom.phase_a / dom.phase_b / sanitize.chunk', async ({ context }) => {
   test.setTimeout(180_000);
   const server = await startStaticServer(FIXTURES_ROOT);
   try {
@@ -40,7 +41,7 @@ test('baseline latency for dom.phase_a / dom.phase_b / sanitize.regex', async ({
     const summary = {
       'dom.phase_a': stats.perOp['dom.phase_a'],
       'dom.phase_b': stats.perOp['dom.phase_b'],
-      'sanitize.regex': stats.perOp['sanitize.regex'],
+      'sanitize.chunk': stats.perOp['sanitize.chunk'],
       'sanitize.ner': stats.perOp['sanitize.ner'],
       'model.load': stats.perOp['model.load'],
     };
@@ -53,7 +54,7 @@ test('baseline latency for dom.phase_a / dom.phase_b / sanitize.regex', async ({
 
     expect(stats.perOp['dom.phase_a']?.count).toBeGreaterThan(0);
     expect(stats.perOp['dom.phase_b']?.count).toBeGreaterThan(0);
-    expect(stats.perOp['sanitize.regex']?.count).toBeGreaterThan(0);
+    expect(stats.perOp['sanitize.chunk']?.count).toBeGreaterThan(0);
     expect(stats.perOp['sanitize.ner']?.count).toBeGreaterThan(0);
   } finally {
     await server.close();

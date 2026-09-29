@@ -14,6 +14,13 @@ import { logEgressBlocked } from '../egressGuard';
 const MICRO_BATCH_MAX = 16;
 const MICRO_BATCH_MAX_WAIT_MS = 10;
 
+// M12 (user decision): always wasm, whatever the §10 decision. The q8 model
+// is dynamically quantized (DynamicQuantizeLinear + MatMulInteger), ops
+// ORT's WebGPU EP likely leaves on the CPU, so each layer round-trips
+// between devices: measured 48 ms p50 on wasm vs 308 ms on an RTX 3050
+// (docs/BENCHMARKS.md).
+const NER_COMPUTE = 'wasm';
+
 type WorkerSpan = { start: number; end: number; label: string; confidence: Bucket };
 
 interface InitAck {
@@ -32,7 +39,8 @@ export const graviteeBertSmallPii: ModelProvider<'ner'> = {
   id: 'ner/gravitee-bert-small-pii',
   capability: 'ner',
   tier: 1,
-  requires: {}, // runs on wasm or webgpu (ONNX Runtime Web adapts, §9.5)
+  requires: {},
+  effectiveCompute: () => NER_COMPUTE,
   approxDownloadMB: 29,
 
   async load(ctx): Promise<PiiNer> {
@@ -65,7 +73,7 @@ export const graviteeBertSmallPii: ModelProvider<'ner'> = {
         type: 'init',
         modelsBaseUrl: ctx.assetUrl('/models/'),
         ortWasmBaseUrl: ctx.assetUrl('/ort/'),
-        compute: ctx.compute,
+        compute: NER_COMPUTE,
       });
     });
 
@@ -100,7 +108,7 @@ export const graviteeBertSmallPii: ModelProvider<'ner'> = {
       run: (texts) =>
         ctx.logger.timed(
           'sanitize.ner',
-          { session_id: ctx.session_id, model_id: graviteeBertSmallPii.id, tier: 1, compute: ctx.compute, counts: { units: texts.length } },
+          { session_id: ctx.session_id, model_id: graviteeBertSmallPii.id, tier: 1, compute: NER_COMPUTE, counts: { units: texts.length } },
           () =>
             new Promise<WorkerSpan[][]>((resolve, reject) => {
               const id = nextId++;

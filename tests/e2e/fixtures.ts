@@ -10,8 +10,8 @@ const EXTENSION_PATH = path.resolve(import.meta.dirname, '../../.output/chrome-m
 export const E2E_PUBLIC_HOST = 'xo.edward.test';
 
 // Launches Chromium with the built extension. `userDataDir` '' is a fresh
-// temporary profile; tests/bench/faceRecall.spec.ts passes a real directory
-// so settings survive a browser restart.
+// temporary profile; launchWithFaceProvider() passes a real directory so
+// settings survive a browser restart.
 export function launchExtensionContext(userDataDir = ''): Promise<BrowserContext> {
   return chromium.launchPersistentContext(userDataDir, {
     headless: false,
@@ -34,6 +34,25 @@ export function launchExtensionContext(userDataDir = ''): Promise<BrowserContext
         : []),
     ],
   });
+}
+
+// The one extension API used below, typed just enough for the callback (it
+// runs inside the service worker; tests don't get the WXT types).
+type ExtensionGlobal = { chrome: { storage: { local: { set(items: Record<string, unknown>): Promise<void> } } } };
+
+// Writes a face-model override (the same storage key the settings page
+// writes), then restarts the browser on the same profile so the compute host
+// starts with it -- the documented way a model change takes effect.
+// (chrome.runtime.reload() would be quicker, but under Playwright it closes
+// the whole browser.)
+export async function launchWithFaceProvider(userDataDir: string, id: string): Promise<BrowserContext> {
+  const setup = await launchExtensionContext(userDataDir);
+  const sw = setup.serviceWorkers()[0] ?? (await setup.waitForEvent('serviceworker'));
+  await sw.evaluate(async (value) => {
+    await (globalThis as unknown as ExtensionGlobal).chrome.storage.local.set({ 'edward.modelSettings': value });
+  }, { overrides: { face: id } });
+  await setup.close();
+  return launchExtensionContext(userDataDir);
 }
 
 export const test = base.extend<{

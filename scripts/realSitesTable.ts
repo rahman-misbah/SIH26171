@@ -91,12 +91,12 @@ export function renderRealSitesSection(label: string, date: string, run: RealSit
     );
   }
 
-  lines.push('', '| site | `dom.phase_a` | `sanitize.regex` | `sanitize.ner` | `image.face` | `image.ocr` | `context.assemble` | fail-closed | reasons | residual (incl. likely-public emails) |');
+  lines.push('', '| site | `dom.phase_a` | `sanitize.chunk` | `sanitize.ner` | `image.face` | `image.ocr` | `context.assemble` | fail-closed | reasons | residual (incl. likely-public emails) |');
   lines.push('|---|---|---|---|---|---|---|---:|---|---|');
   for (const site of sites) {
     const o = site.perOp;
     lines.push(
-      `| ${site.id} | ${p50p95(o['dom.phase_a'])} | ${p50p95(o['sanitize.regex'])} | ${p50p95(o['sanitize.ner'])} | ${p50p95(o['image.face'])} | ${p50p95(o['image.ocr'])} | ${p50p95(o['context.assemble'])} | ${site.failClosed} | ${breakdown(site.reasons)} | ${site.summary ? breakdown(site.summary.residual) : DASH} |`,
+      `| ${site.id} | ${p50p95(o['dom.phase_a'])} | ${p50p95(o['sanitize.chunk'])} | ${p50p95(o['sanitize.ner'])} | ${p50p95(o['image.face'])} | ${p50p95(o['image.ocr'])} | ${p50p95(o['context.assemble'])} | ${site.failClosed} | ${breakdown(site.reasons)} | ${site.summary ? breakdown(site.summary.residual) : DASH} |`,
     );
   }
 

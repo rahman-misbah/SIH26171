@@ -31,9 +31,10 @@ export const scrfd: ModelProvider<'face'> = {
   id: 'face/scrfd-2.5g',
   capability: 'face',
   tier: 2,
-  // Auto-selected only on WebGPU. It runs on wasm too, but only when the
-  // user picks it in settings (§9.4 override).
-  requires: { webgpu: true },
+  // M12: runs on every machine (wasm costs time, ~250-770 ms per new image,
+  // not recall). Automatic use is inside ./union.ts, next to BlazeFace; on
+  // its own it's the fallback if BlazeFace fails to load.
+  requires: {},
   approxDownloadMB: 3.3, // det_2.5g.onnx; the ORT runtime is already bundled for NER
 
   async load(ctx): Promise<FaceDetector> {

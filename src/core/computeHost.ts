@@ -8,7 +8,17 @@ import { assembleObservation, createAgentLoop, prepareObservationImages } from '
 import { configureBackendDeps, getBackend, getBackendSettings } from '@/backend';
 import type { BackendCapabilities } from '@/backend';
 import { detectDevice } from '@/hw';
-import { createImagePipeline, decodeImage, fetchImage, hashPixels, IdbImageCache, redactAndEncode, reencodeJpeg, SendableImageStore } from '@/image';
+import {
+  checkPixelReadback,
+  createImagePipeline,
+  decodeImage,
+  fetchImage,
+  hashPixels,
+  IdbImageCache,
+  redactAndEncode,
+  reencodeJpeg,
+  SendableImageStore,
+} from '@/image';
 import type { ImagePipeline } from '@/image';
 import { createLogger, IdbSink, ReasonCodeError } from '@/logging';
 import type { LogRecord, RuntimeLogger, SessionRecord } from '@/logging';
@@ -50,6 +60,8 @@ function createHostImagePipeline(logger: RuntimeLogger): ImagePipeline {
       const [face, ocr, qr] = await Promise.all([getActiveModelId('face'), getActiveModelId('ocr'), getActiveModelId('qr')]);
       return face && ocr && qr ? `face=${face};ocr=${ocr};qr=${qr}` : undefined;
     },
+    // M12: a browser-wide GPU fault can make canvas readback all zeros (§6.4).
+    pixelReadbackOk: checkPixelReadback,
     fetchImage,
     decode: decodeImage,
     hashPixels,
@@ -84,8 +96,11 @@ function createDispatch(logger: RuntimeLogger) {
 
       case 'sanitizeChunk': {
         const req = payload as MessageMap['request']['sanitizeChunk']['request'];
+        // The whole chunk: regex, the awaited NER micro-batches and
+        // tokenization. NER on its own is `sanitize.ner`; the gap is regex,
+        // the batcher's wait and messaging (M12 rename from sanitize.regex).
         return logger.timed(
-          'sanitize.regex',
+          'sanitize.chunk',
           { session_id: req.session_id, counts: { units: req.units.length } },
           async () => {
             const tokenMap = agentLoop.getOrCreateTokenMap(req.session_id);

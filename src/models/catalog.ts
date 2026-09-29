@@ -17,10 +17,11 @@ export const MODEL_CATALOG: CatalogEntry[] = [
   {
     capability: 'face',
     label: 'Face detection',
-    automatic: 'Automatic (SCRFD on a GPU, BlazeFace otherwise)',
+    automatic: 'Automatic (SCRFD + BlazeFace together)',
     options: [
-      { id: 'face/scrfd-2.5g', label: 'SCRFD-2.5G (tier 2, better on small faces, slower without a GPU)' },
-      { id: 'face/blazeface-mediapipe', label: 'BlazeFace (tier 1, fastest)' },
+      { id: 'face/scrfd+blazeface', label: 'SCRFD + BlazeFace (tier 2, small and close-up faces)' },
+      { id: 'face/scrfd-2.5g', label: 'SCRFD-2.5G (tier 2, finds small faces, faster with a GPU)' },
+      { id: 'face/blazeface-mediapipe', label: 'BlazeFace (tier 1, fastest, misses faces under ~128 px)' },
     ],
   },
   {

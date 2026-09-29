@@ -33,7 +33,7 @@ describe('createLogger.timed', () => {
     const logger = createLogger(sink);
 
     await expect(
-      logger.timed('sanitize.regex', { session_id: 's1' }, async () => {
+      logger.timed('sanitize.chunk', { session_id: 's1' }, async () => {
         throw new Error('boom');
       }),
     ).rejects.toThrow('boom');

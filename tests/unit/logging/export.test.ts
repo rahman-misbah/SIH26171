@@ -26,7 +26,7 @@ describe('exportLogs', () => {
     const sink = createFakeSink();
     await sink.putRecords([
       { session_id: 's1', op: 'dom.phase_a', t_start: 0, t_end: 1, duration_ms: 1, outcome: 'ok' },
-      { session_id: 's1', op: 'sanitize.regex', t_start: 1, t_end: 3, duration_ms: 2, outcome: 'fail', reason: 'unknown' },
+      { session_id: 's1', op: 'sanitize.chunk', t_start: 1, t_end: 3, duration_ms: 2, outcome: 'fail', reason: 'unknown' },
     ]);
 
     const csv = await exportLogs(sink, 'csv');
@@ -34,7 +34,7 @@ describe('exportLogs', () => {
 
     expect(lines[0]).toBe('session_id,step,op,t_start,t_end,duration_ms,outcome,reason,ref,model_id,tier,compute');
     expect(lines).toHaveLength(3);
-    expect(lines[2]).toContain('sanitize.regex');
+    expect(lines[2]).toContain('sanitize.chunk');
     expect(lines[2]).toContain('unknown');
   });
 

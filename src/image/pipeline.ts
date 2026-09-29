@@ -68,6 +68,10 @@ export interface ImagePipelineDeps {
   // §6.6: undefined when a detector stage is running on its fail-closed
   // fallback -- nothing is cached then (there's no trustworthy result).
   detectorSetVersion(): Promise<string | undefined>;
+  // M12: can a 2D canvas be read back correctly here? Some GPU setups hand
+  // back all-zero pixels with no error, which would make every detector see
+  // a blank image. Called once per pipeline; false or a throw withholds all.
+  pixelReadbackOk(): Promise<boolean>;
   fetchImage(src: string, validators?: Validators): Promise<FetchResult>;
   decode(bytes: Blob): Promise<ImageBitmap>;
   hashPixels(image: ImageBitmap): Promise<string>;
@@ -88,6 +92,29 @@ export function createImagePipeline(deps: ImagePipelineDeps): ImagePipeline {
 
   function stamp(): number {
     return performance.timeOrigin + performance.now();
+  }
+
+  // One check per compute host (the failure is browser-wide, not per image),
+  // run lazily on the first image request and logged once under that
+  // request's session. A throw counts as broken: fail closed.
+  let readback: Promise<boolean> | undefined;
+  function readbackOk(session_id: string): Promise<boolean> {
+    readback ??= (async () => {
+      const t_start = stamp();
+      const ok = await deps.pixelReadbackOk().catch(() => false);
+      const t_end = stamp();
+      logger.record({
+        session_id,
+        op: 'image.readback_check',
+        t_start,
+        t_end,
+        duration_ms: t_end - t_start,
+        outcome: ok ? 'ok' : 'fail_closed',
+        reason: ok ? undefined : 'canvas_readback_failed',
+      });
+      return ok;
+    })();
+    return readback;
   }
 
   function recordInstant(op: OpName, meta: LogMeta, outcome: LogRecord['outcome'], reason?: ReasonCode): void {
@@ -216,6 +243,8 @@ export function createImagePipeline(deps: ImagePipelineDeps): ImagePipeline {
     const needPixels: LookupResult = { node_id: ref.node_id, status: 'need_pixels' };
     // §6.3: inline sources are never cached -- always processed fresh.
     if (isInlineSource(ref.src)) return needPixels;
+    // No cache hits while readback is broken: process() withholds instead.
+    if (!(await readbackOk(ctx.session_id))) return needPixels;
 
     const img_id = await computeImgId(ref.src, ref.natural_w, ref.natural_h);
     const version = await deps.detectorSetVersion();
@@ -295,6 +324,11 @@ export function createImagePipeline(deps: ImagePipelineDeps): ImagePipeline {
   }
 
   async function processOne(ctx: ImageRequestContext, ref: ImageRef, pixels?: ArrayBuffer): Promise<ProcessResult> {
+    if (!(await readbackOk(ctx.session_id))) {
+      recordInstant('image.acquire', { session_id: ctx.session_id, ref: ref.node_id }, 'fail_closed', 'canvas_readback_failed');
+      return { node_id: ref.node_id, outcome: 'unreadable' };
+    }
+
     let acquired: Awaited<ReturnType<typeof acquire>>;
     try {
       acquired = await acquire(ctx, ref, pixels);

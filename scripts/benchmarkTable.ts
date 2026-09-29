@@ -18,7 +18,7 @@ export interface BenchRun {
 const OP_ORDER = [
   'dom.phase_a',
   'dom.phase_b',
-  'sanitize.regex',
+  'sanitize.chunk',
   'sanitize.ner',
   'image.acquire',
   'image.face',

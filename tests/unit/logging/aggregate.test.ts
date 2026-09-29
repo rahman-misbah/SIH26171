@@ -16,11 +16,11 @@ function record(overrides: Partial<LogRecord> & Pick<LogRecord, 'op'>): LogRecor
 describe('aggregate', () => {
   it('computes p50/p95 duration per op', () => {
     const durations = [10, 20, 30, 40, 50, 60, 70, 80, 90, 100];
-    const records = durations.map((duration_ms) => record({ op: 'sanitize.regex', duration_ms }));
+    const records = durations.map((duration_ms) => record({ op: 'sanitize.chunk', duration_ms }));
 
     const result = aggregate(records);
 
-    expect(result.perOp['sanitize.regex']).toEqual({ p50: 60, p95: 100, count: 10 });
+    expect(result.perOp['sanitize.chunk']).toEqual({ p50: 60, p95: 100, count: 10 });
   });
 
   it('computes cache hit rate from image.cache_hit / (hit + miss)', () => {

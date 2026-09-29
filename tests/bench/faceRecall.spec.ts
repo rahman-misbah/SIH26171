@@ -14,15 +14,15 @@ import { readFileSync } from 'node:fs';
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import type { BrowserContext, Page, Worker } from '@playwright/test';
+import type { Page } from '@playwright/test';
 import type { FaceRecallRun } from '../../scripts/faceRecallTable.ts';
 import type { RecallFace } from '../fixtures/renderFaceRecall';
-import { expect, launchExtensionContext, test } from '../e2e/fixtures';
+import { expect, launchWithFaceProvider, test } from '../e2e/fixtures';
 import { readSessionsFromServiceWorker, waitForWarmStart } from '../e2e/logs';
 import { startStaticServer } from '../e2e/staticServer';
 
 const FIXTURES_ROOT = path.resolve(import.meta.dirname, '../fixtures');
-const PROVIDERS = ['face/blazeface-mediapipe', 'face/scrfd-2.5g'] as const;
+const PROVIDERS = ['face/blazeface-mediapipe', 'face/scrfd-2.5g', 'face/scrfd+blazeface'] as const;
 const FLUSH_WAIT_MS = 5_500; // the logger flushes every 5 s (§11.2)
 
 // A detection matches a ground-truth face when its centre lies inside the
@@ -33,26 +33,6 @@ const FLUSH_WAIT_MS = 5_500; // the logger flushes every 5 s (§11.2)
 const MATCH_IOU = 0.2;
 // Timed detections per provider; the median is reported (warm, §15).
 const TIMED_RUNS = 3;
-
-async function serviceWorker(context: BrowserContext): Promise<Worker> {
-  return context.serviceWorkers()[0] ?? (await context.waitForEvent('serviceworker'));
-}
-
-// The one extension API used below, typed just enough for the callback (it
-// runs inside the service worker; tests don't get the WXT types).
-type ExtensionGlobal = { chrome: { storage: { local: { set(items: Record<string, unknown>): Promise<void> } } } };
-
-// Writes the model setting, then restarts the browser on the same profile
-// so the compute host starts with it.
-async function launchWithFaceProvider(userDataDir: string, id: string): Promise<BrowserContext> {
-  const setup = await launchExtensionContext(userDataDir);
-  const sw = await serviceWorker(setup);
-  await sw.evaluate(async (value) => {
-    await (globalThis as unknown as ExtensionGlobal).chrome.storage.local.set({ 'edward.modelSettings': value });
-  }, { overrides: { face: id } });
-  await setup.close();
-  return launchExtensionContext(userDataDir);
-}
 
 type Box = { x: number; y: number; w: number; h: number };
 
