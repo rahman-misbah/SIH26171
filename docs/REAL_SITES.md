@@ -89,31 +89,31 @@ chromium · Linux · 16 logical cores · compute wasm
 
 | site | kind | outcome | observe ms | nodes | fields | truncated (trimmed nodes) | tokens | markers | images sent / nodes | omitted | text KB | image KB | leak candidates |
 |---|---|---|---:|---:|---:|---|---|---|---:|---|---:|---:|---:|
-| wikipedia | article, images | ok | 3558 | 499 | 300 | yes (63) | ADDRESS 5, NAME 13, OTHER 7 | – | 4 / 6 | too_small 2 | 127 | 124 | 0 |
-| duckduckgo | search results | ok | 4736 | 243 | 128 | no | ADDRESS 11, NAME 7, OTHER 24 | – | 1 / 13 | too_small 11, unreadable 1 | 67 | 1 | 0 |
-| thehindu | news | ok | 5174 | 293 | 172 | yes (28) | ADDRESS 21, NAME 43, OTHER 8 | iframe_skipped 2 | 4 / 27 | request_limit 9, too_small 6 | 83 | 78 | 0 |
-| isro | government | ok | 2968 | 605 | 300 | yes (164) | ADDRESS 10, NAME 21, OTHER 5 | svg_skipped 2, video_skipped 1 | 4 / 46 | request_limit 37, too_small 4 | 153 | 29 | 0 |
-| indiagov | government portal | ok | 3092 | 663 | 229 | yes (77) | ADDRESS 6, NAME 3, OTHER 3 | svg_skipped 90 | 4 / 15 | request_limit 7, too_small 2 | 152 | 134 | 0 |
-| github-login | login form (secret field) | ok | 1093 | 93 | 37 | no | OTHER 9 | svg_skipped 6 | 0 / 0 | – | 22 | 0 | 0 |
-| github-profile | profile, avatar | ok | 2456 | 512 | 251 | no | ADDRESS 5, NAME 1, OTHER 4 | svg_skipped 59 | 4 / 8 | request_limit 2, too_small 2 | 120 | 52 | 0 |
-| stackoverflow | Q&A, user content | ok | 242 | 3 | 0 | no | – | – | 0 / 0 | – | 1 | 0 | 0 |
-| flipkart | e-commerce listing | ok | 3895 | 1095 | 300 | yes (125) | ADDRESS 5, NAME 6, OTHER 2 | svg_skipped 88 | 4 / 21 | request_limit 3, too_small 14 | 225 | 61 | 0 |
-| httpbin-form | plain form | ok | 346 | 59 | 46 | no | NAME 1 | – | 0 / 0 | – | 16 | 0 | 0 |
-| youtube-embed | iframe embed | ok | 2501 | 581 | 300 | yes (11) | NAME 3, OTHER 2 | iframe_skipped 3 | 0 / 0 | – | 131 | 0 | 0 |
+| wikipedia | article, images | ok | 6298 | 492 | 300 | yes (60) | ADDRESS 7, NAME 16, OTHER 10 | – | 4 / 4 | – | 124 | 124 | 0 |
+| duckduckgo | search results | ok | 4731 | 236 | 124 | no | ADDRESS 15, NAME 12, OTHER 20 | – | 0 / 11 | too_small 11 | 64 | 0 | 0 |
+| thehindu | news | ok | 9661 | 305 | 176 | yes (24) | ADDRESS 18, NAME 50, OTHER 9 | iframe_skipped 1 | 4 / 27 | request_limit 8, too_small 7 | 85 | 77 | 0 |
+| isro | government | ok | 3008 | 594 | 300 | yes (157) | ADDRESS 8, NAME 19, OTHER 5 | svg_skipped 2, video_skipped 1 | 4 / 46 | request_limit 28, too_small 13 | 150 | 29 | 0 |
+| indiagov | government portal | ok | 3772 | 663 | 229 | yes (76) | ADDRESS 6, NAME 3, OTHER 3 | svg_skipped 90 | 4 / 15 | request_limit 7, too_small 2 | 152 | 133 | 0 |
+| github-login | login form (secret field) | ok | 1517 | 148 | 59 | no | OTHER 7 | svg_skipped 8 | 0 / 0 | – | 37 | 0 | 0 |
+| github-profile | profile, avatar | ok | 2785 | 516 | 251 | no | ADDRESS 5, NAME 1, OTHER 4 | svg_skipped 59 | 4 / 8 | request_limit 1, too_small 3 | 121 | 49 | 0 |
+| stackoverflow | Q&A, user content | ok | 245 | 3 | 0 | no | – | – | 0 / 0 | – | 1 | 0 | 0 |
+| flipkart | e-commerce listing | ok | 4213 | 1091 | 300 | yes (124) | ADDRESS 6, NAME 6, OTHER 3 | svg_skipped 81 | 4 / 21 | request_limit 3, too_small 14 | 224 | 61 | 0 |
+| httpbin-form | plain form | ok | 324 | 59 | 46 | no | NAME 1 | – | 0 / 0 | – | 16 | 0 | 0 |
+| youtube-embed | iframe embed | ok | 2182 | 581 | 300 | yes (11) | NAME 3, OTHER 2 | iframe_skipped 3 | 0 / 0 | – | 131 | 0 | 0 |
 
-| site | `dom.phase_a` | `sanitize.regex` | `sanitize.ner` | `image.face` | `image.ocr` | `context.assemble` | fail-closed | reasons | residual (incl. likely-public emails) |
+| site | `dom.phase_a` | `sanitize.chunk` | `sanitize.ner` | `image.face` | `image.ocr` | `context.assemble` | fail-closed | reasons | residual (incl. likely-public emails) |
 |---|---|---|---|---|---|---|---:|---|---|
-| wikipedia | 1109 / 1109 | 2336 / 2336 | 80 / 210 | 15 / 19 | 142 / 733 | 6 / 6 | 0 | cors_blocked 1, too_small 593, unreadable 3 | – |
-| duckduckgo | 10 / 10 | 4563 / 4563 | 221 / 936 | 12 / 12 | 7 / 7 | 2 / 2 | 0 | cors_blocked 2, too_small 11, unreadable 1 | – |
-| thehindu | 66 / 66 | 3860 / 3860 | 66 / 645 | 17 / 18 | 280 / 392 | 3 / 3 | 0 | too_small 11, unreadable 2 | – |
-| isro | 175 / 175 | 2683 / 2683 | 71 / 229 | 17 / 21 | 48 / 86 | 3 / 3 | 0 | too_small 28 | – |
-| indiagov | 53 / 53 | 2845 / 2845 | 83 / 644 | 24 / 57 | 315 / 384 | 4 / 4 | 0 | cors_blocked 3, too_small 6 | – |
-| github-login | 9 / 9 | 924 / 924 | 204 / 624 | – | – | 0 / 0 | 0 | – | – |
-| github-profile | 32 / 32 | 2268 / 2268 | 52 / 215 | 14 / 19 | 104 / 181 | 3 / 3 | 0 | cors_blocked 4, too_small 2 | – |
-| stackoverflow | 1 / 1 | 92 / 92 | 81 / 81 | 0 / 0 | – | 0 / 0 | 0 | egress_blocked 3 | – |
-| flipkart | 70 / 70 | 3685 / 3685 | 52 / 338 | 10 / 14 | 80 / 151 | 4 / 4 | 0 | cors_blocked 4, too_small 59 | – |
-| httpbin-form | 4 / 4 | 173 / 173 | 54 / 64 | – | – | 0 / 0 | 0 | – | – |
-| youtube-embed | 120 / 120 | 2299 / 2299 | 49 / 762 | – | – | 1 / 1 | 0 | – | – |
+| wikipedia | 1217 / 1217 | 2371 / 2371 | 80 / 291 | 338 / 361 | 223 / 788 | 6 / 6 | 0 | cors_blocked 1, too_small 482, unreadable 3 | – |
+| duckduckgo | 63 / 63 | 4557 / 4557 | 185 / 987 | – | – | 1 / 1 | 0 | too_small 11 | – |
+| thehindu | 71 / 71 | 3314 / 3314 | 62 / 359 | 285 / 295 | 240 / 395 | 3 / 3 | 0 | cors_blocked 3, too_small 12 | – |
+| isro | 157 / 157 | 2767 / 2767 | 90 / 219 | 284 / 342 | 57 / 111 | 3 / 3 | 0 | egress_blocked 3, too_small 38 | – |
+| indiagov | 49 / 49 | 2893 / 2893 | 75 / 739 | 303 / 313 | 278 / 315 | 3 / 3 | 0 | cors_blocked 3, too_small 5 | – |
+| github-login | 10 / 10 | 1360 / 1360 | 508 / 646 | – | – | 1 / 1 | 0 | – | – |
+| github-profile | 56 / 56 | 2286 / 2286 | 48 / 245 | 268 / 277 | 93 / 208 | 3 / 3 | 0 | cors_blocked 3, too_small 3, unreadable 1 | – |
+| stackoverflow | 1 / 1 | 86 / 86 | 75 / 75 | – | – | 0 / 0 | 0 | – | – |
+| flipkart | 69 / 69 | 3882 / 3882 | 53 / 391 | 280 / 280 | 98 / 157 | 5 / 5 | 0 | cors_blocked 4, too_small 58 | – |
+| httpbin-form | 4 / 4 | 170 / 170 | 55 / 64 | – | – | 0 / 0 | 0 | – | – |
+| youtube-embed | 115 / 115 | 1988 / 1988 | 40 / 643 | – | – | 1 / 1 | 0 | – | – |
 
 URLs:
 
