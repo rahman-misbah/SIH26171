@@ -57,6 +57,14 @@ Browser extension that acts as a privacy firewall for browser agents: it extract
 - Fixtures use synthetic PII only. Never commit API keys.
 - Model weights are not committed; `scripts/fetch-models.ts` downloads them into `public/models/`.
 
+## Learning goal: understand Edward END TO END (user request, 2026-09-30)
+The user came up with the idea, architecture and pipeline; much of the implementation was written with Claude. Before the SIH evaluation they want to **understand the entire codebase end to end**: not a summary or a tour of folders, but every module, how data actually flows through it, and **why every decision was made**. The aim is to answer any judge's question without notes. Not started yet; the user will say when. When they do:
+- **Teach, don't just describe.** Start by following one real task through the actual code: popup Start → content script Phase A/B → compute host (sanitize, token map, images) → assembler and final guard → backend → egress policy → token resolution → executor → next step. Then go subsystem by subsystem.
+- **Cover every decision, not just the code.** For each choice give the reason, the alternative rejected, and the SPEC section or MILESTONES Log entry it comes from, including the deviations and the M12 changes (SCRFD + BlazeFace union, NER on wasm, readback check, `sanitize.chunk`, viewer).
+- **Include the numbers and the limits:** benchmarks, real-site results, browser quirks, known gaps (SPEC §16).
+- **Check understanding as you go:** ask the user to explain parts back before moving on. Don't let them skim.
+- **Finish with the quiz:** `/milestone-quiz` scopes to the in-progress milestone by default, so pass a focus (e.g. `/milestone-quiz whole codebase`, or one subsystem at a time) until everything is covered.
+
 ## Browser quirks found
 <!-- Append here AND to SPEC §4.3 whenever one is discovered -->
 

@@ -1,0 +1,237 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Edward in numbers</title>
+    <!-- Video scene 6 card (docs/VIDEO_SCRIPT.md). Record at 1920x1080,
+         browser zoom 100%, F11 full screen. Every number is measured; the
+         source of each is in the footer and in VIDEO_SCRIPT.md. -->
+    <style>
+      :root {
+        --bg: #f4f6f9;
+        --surface: #ffffff;
+        --ink: #14213d;
+        --ink-2: #3c4a63;
+        --muted: #66738a;
+        --line: #dde3ec;
+        --band: #1f4b7a;
+        --band-ink: #ffffff;
+        --accent: #1f4b7a;
+        --tag-bg: #e8eef6;
+      }
+      @media (prefers-color-scheme: dark) {
+        :root:not([data-theme='light']) {
+          --bg: #0e1522;
+          --surface: #172233;
+          --ink: #eef2f8;
+          --ink-2: #c3ccda;
+          --muted: #8f9bb0;
+          --line: #26344a;
+          --band: #16365a;
+          --band-ink: #ffffff;
+          --accent: #8fb6e6;
+          --tag-bg: #1f2e45;
+        }
+      }
+      :root[data-theme='dark'] {
+        --bg: #0e1522;
+        --surface: #172233;
+        --ink: #eef2f8;
+        --ink-2: #c3ccda;
+        --muted: #8f9bb0;
+        --line: #26344a;
+        --band: #16365a;
+        --band-ink: #ffffff;
+        --accent: #8fb6e6;
+        --tag-bg: #1f2e45;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+        height: 100%;
+      }
+      body {
+        background: var(--bg);
+        color: var(--ink);
+        font-family: Inter, 'Segoe UI', Roboto, system-ui, -apple-system, sans-serif;
+        display: flex;
+        flex-direction: column;
+        min-height: 100vh;
+      }
+      header {
+        background: var(--band);
+        color: var(--band-ink);
+        padding: 28px 64px;
+        display: flex;
+        align-items: baseline;
+        justify-content: space-between;
+        gap: 24px;
+        flex-wrap: wrap;
+      }
+      header h1 {
+        margin: 0;
+        font-size: 40px;
+        font-weight: 700;
+        letter-spacing: 0.02em;
+      }
+      header p {
+        margin: 0;
+        font-size: 20px;
+        opacity: 0.85;
+      }
+      /* Cards take their content's height; the block is centred in the
+         frame rather than stretched to fill it. */
+      main {
+        flex: 1;
+        display: grid;
+        grid-template-columns: minmax(320px, 1fr) minmax(0, 2fr);
+        gap: 32px;
+        padding: 40px 64px;
+        align-content: center;
+        align-items: stretch;
+      }
+      .card {
+        background: var(--surface);
+        border: 1px solid var(--line);
+        border-radius: 16px;
+        padding: 28px 30px;
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+      }
+      .hero {
+        justify-content: center;
+        gap: 20px;
+        border-top: 6px solid var(--accent);
+      }
+      .hero .tag {
+        margin-top: 8px;
+      }
+      .hero .value {
+        font-size: 128px;
+        line-height: 1;
+        font-weight: 600;
+        color: var(--ink);
+      }
+      .hero .label {
+        font-size: 26px;
+        color: var(--ink-2);
+        line-height: 1.35;
+      }
+      .tiles {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 24px;
+      }
+      .tile .value {
+        font-size: 56px;
+        line-height: 1.05;
+        font-weight: 600;
+      }
+      .tile .value small {
+        font-size: 28px;
+        font-weight: 500;
+        color: var(--ink-2);
+      }
+      .tile .label {
+        font-size: 19px;
+        color: var(--ink-2);
+        line-height: 1.4;
+      }
+      .tag {
+        align-self: flex-start;
+        margin-top: auto;
+        padding-top: 4px;
+        font-size: 14px;
+        font-weight: 600;
+        color: var(--muted);
+        background: var(--tag-bg);
+        border-radius: 999px;
+        padding: 4px 12px;
+      }
+      footer {
+        padding: 0 64px 28px;
+        color: var(--muted);
+        font-size: 15px;
+        display: flex;
+        justify-content: space-between;
+        gap: 24px;
+        flex-wrap: wrap;
+      }
+      /* Phone width: one column, smaller figures, 16px gutters. */
+      @media (max-width: 900px) {
+        header,
+        main,
+        footer {
+          padding-left: 16px;
+          padding-right: 16px;
+        }
+        main {
+          grid-template-columns: 1fr;
+        }
+        .tiles {
+          grid-template-columns: 1fr;
+        }
+        .hero .value {
+          font-size: 88px;
+        }
+        .tile .value {
+          font-size: 44px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>EDWARD, in numbers</h1>
+      <p>Team Redacted · SIH 2026 · PS SIH26171</p>
+    </header>
+    <main>
+      <section class="card hero" aria-label="Headline result">
+        <div class="value">18 / 18</div>
+        <div class="label">Faces found and redacted in our recall test, from 160 px down to 20 px, on a laptop CPU and on a GPU</div>
+        <span class="tag">Precision of redaction</span>
+      </section>
+      <section class="tiles" aria-label="Results">
+        <div class="card tile">
+          <div class="value">0</div>
+          <div class="label">ID numbers, phone numbers or emails left in outgoing text, across 11 real websites</div>
+          <span class="tag">PII recall</span>
+        </div>
+        <div class="card tile">
+          <div class="value">9 <small>of 11</small></div>
+          <div class="label">Real websites observed in under 5 seconds</div>
+          <span class="tag">End-to-end latency</span>
+        </div>
+        <div class="card tile">
+          <div class="value">130 <small>ms</small></div>
+          <div class="label">Face detection per image on a GPU (261 ms on a laptop CPU)</div>
+          <span class="tag">Client resources</span>
+        </div>
+        <div class="card tile">
+          <div class="value">100%</div>
+          <div class="label">On-device: every vision and text model ships in a 68 MB package and runs offline</div>
+          <span class="tag">Privacy by design</span>
+        </div>
+        <div class="card tile">
+          <div class="value">Any</div>
+          <div class="label">Reasoning backend: Groq, OpenRouter, any OpenAI-compatible server, or our own wire protocol</div>
+          <span class="tag">Server integration</span>
+        </div>
+        <div class="card tile">
+          <div class="value">667 <small>+ 19</small></div>
+          <div class="label">Unit and end-to-end tests, all passing, in Chrome; Firefox verified by hand</div>
+          <span class="tag">Reliability</span>
+        </div>
+      </section>
+    </main>
+    <footer>
+      <span>Measured on a Ryzen 7 4800H + RTX 3050 laptop in Chrome (docs/BENCHMARKS.md, docs/REAL_SITES.md).</span>
+      <span>"0" is a regex re-scan of everything sent; names and addresses are tokenized by on-device NER.</span>
+    </footer>
+  </body>
+</html>
